@@ -1,0 +1,2028 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Memoria Líquen</title>
+  <style>
+    :root {
+      --carbon: #0c0e0e;
+      --neon: #39ff88;
+      --turquesa: #2de2d0;
+      --gris: #8b9490;
+      --gris-claro: #d6dcd9;
+    }
+    html, body { margin: 0; height: 100%; background: #000; }
+    #landing {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center;
+      background: var(--carbon);
+      font-family: "Inter", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+      transition: opacity .6s ease;
+    }
+    #landing.hidden { opacity: 0; pointer-events: none; }
+    #landing .inner { padding: 0 8vw; max-width: 640px; }
+    #landing .accent { width: 56px; height: 2px; background: var(--turquesa); margin-bottom: 28px; }
+    #landing h1 {
+      margin: 0 0 24px; color: var(--gris-claro);
+      font-weight: 300; letter-spacing: -0.02em; line-height: 1;
+      font-size: clamp(44px, 8vw, 112px);
+    }
+    #landing p {
+      margin: 0 0 40px; color: var(--gris);
+      font-size: clamp(15px, 1.4vw, 19px); line-height: 1.6; max-width: 34em;
+    }
+    #start {
+      appearance: none; cursor: pointer;
+      background: transparent; color: var(--neon);
+      border: 1px solid var(--neon); border-radius: 999px;
+      padding: 14px 30px; font: inherit; font-size: 16px; letter-spacing: .04em;
+      transition: background .25s ease, color .25s ease, box-shadow .25s ease, opacity .25s ease;
+    }
+    #start:hover:not(:disabled), #start:focus-visible:not(:disabled) {
+      background: var(--neon); color: var(--carbon);
+      box-shadow: 0 0 24px rgba(57, 255, 136, .45); outline: none;
+    }
+    #start:disabled { opacity: .3; cursor: default; }
+  </style>
+  <script>window.litDisableBundleWarning = true;</script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/",
+        "lit": "https://esm.sh/lit@3.3.1",
+        "lit/": "https://esm.sh/lit@3.3.1/",
+        "xrblocks": "https://cdn.jsdelivr.net/npm/xrblocks@0.22.0/build/xrblocks.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <section id="landing">
+    <div class="inner">
+      <div class="accent"></div>
+      <h1>Memoria Líquen</h1>
+      <p>Bajo la lluvia del bosque valdiviano, un hongo y un alga guardan un pacto antiguo.
+        Entra en su memoria y sigue el hilo que une la roca, el bosque y la vida.</p>
+      <button id="start" disabled>Comienza tu viaje</button>
+    </div>
+  </section>
+
+<script type="module">
+import * as THREE from 'three';
+import * as xb from 'xrblocks';
+import {mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
+
+/* =====================================================================
+ * 1. CONFIGURACIÓN (URLs editables, tiempos, paleta)
+ * ===================================================================== */
+const CONFIG = {
+  // Etiquetas y URLs exactamente como fueron proporcionadas.
+  audio: {
+    // Voz de la escena 1 ("soy un líquen, este es mi hogar, explora para encontrarme"), 29 s.
+    'Audio 00: Soy un líquen': 'https://github.com/Almendra-HC/liquen/blob/main/00%20intro.mp3',
+    'Ambiente del bosque': 'https://github.com/Almendra-HC/liquen/blob/main/audio%20selva%20valdiviana.mp3',
+    'Audio 01: Volvamos al origen': 'https://github.com/Almendra-HC/liquen/blob/main/01%20volvamos%20al%20origen.mp3',
+    'Audio 02: Algo pequeño guarda': 'https://github.com/Almendra-HC/liquen/blob/main/02%20algo%20pequenio%20guarda.mp3',
+    'Audio 03: Azúcar x agua': 'https://github.com/Almendra-HC/liquen/blob/main/03%20azucar%20x%20agua.mp3',
+    'Audio 04: Piedra tierra': 'https://github.com/Almendra-HC/liquen/blob/main/04%20piedra%20tierra.mp3',
+    'Audio 05: Sopla fuerte': 'https://github.com/Almendra-HC/liquen/blob/main/05%20sopla%20foeerte.mp3',
+    'Audio 06: Fuiste comienzo': 'https://github.com/Almendra-HC/liquen/blob/main/06%20fuiste%20comienzo.mp3',
+    'Audio 07: Tejido y red': 'https://github.com/Almendra-HC/liquen/blob/main/07%20tejido%20y%20red.mp3',
+  },
+  // SPORE_MUSIC_URL: pista de referencia opcional (no proporcionada). Mientras sea null,
+  // la música abstracta se genera con el sintetizador procedural.
+  SPORE_MUSIC_URL: null,
+  skyImage: 'https://github.com/Almendra-HC/liquen/blob/main/cielodeliquen.png',
+  // Duración automática de cada estado (s).
+  // Escena 1: voz 0,5–29,5 s; barbas y líquenes aparecen 4,5–18,5 s; al terminar la voz se pueden activar
+  // y aparece "selecciona un líquen con el gatillo"; selección automática a los 44,5 s (s1AutoMax) + 3 s.
+  // Total = 47,5 + 27,5 + 25 + 45 + 34,5 = 179,5 s (< 180 s).
+  durations: [47.5, 27.5, 25, 45, 34.5],
+  s1AutoMax: 44.5,
+  crossfade: 5,          // máximo permitido por el brief
+  navCooldown: 0.3,
+};
+const N = {a00: 'Audio 00: Soy un líquen', amb: 'Ambiente del bosque', a01: 'Audio 01: Volvamos al origen', a02: 'Audio 02: Algo pequeño guarda',
+  a03: 'Audio 03: Azúcar x agua', a04: 'Audio 04: Piedra tierra', a05: 'Audio 05: Sopla fuerte',
+  a06: 'Audio 06: Fuiste comienzo', a07: 'Audio 07: Tejido y red'};
+
+// GitHub "blob" -> archivo directo (raw). Una página HTML de GitHub no es un archivo reproducible.
+const direct = (url) => url && url.replace(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\//, 'https://raw.githubusercontent.com/$1/$2/');
+
+// Colores sRGB "crudos" (los shaders escriben el valor tal cual).
+const hex = (h) => new THREE.Vector3(((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255);
+// Paleta neón sobre negro: cada familia en su propio tono.
+const PAL = {
+  teal: 0x1fbfae,      // estructura del bosque
+  mint: 0xc4ffe6,      // liquen
+  lime: 0xb4ff4d,      // sotobosque
+  lavender: 0xb7a3ff,  // roca
+  amber: 0xffb347,     // polvo del suelo e hifas
+  magenta: 0xff4fd8, cyan: 0x4fe9ff, yellow: 0xffea4f, orange: 0xff8a3d,   // acentos
+};
+const ACCENTS = [PAL.magenta, PAL.cyan, PAL.yellow, PAL.orange];
+
+// Fondo #000 y niebla exponencial hacia negro: solo cambia la densidad por estado.
+const BLACK = new THREE.Vector3(0, 0, 0);
+const STATE_FOG = {
+  forest: [BLACK, 0.06],
+  dive: [BLACK, 0.16],
+  abstract: [BLACK, 0.2],
+  rock: [BLACK, 0.085],
+  grown: [BLACK, 0.06],
+  network: [BLACK, 0.05],
+};
+
+/* =====================================================================
+ * 2. UTILIDADES
+ * ===================================================================== */
+function rng(seed) {   // mulberry32 determinista
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const R = rng(20251011);
+const rr = (a, b) => a + (b - a) * R();
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const smooth = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => a + (b - a) * t;
+const approach = (u, target, rate, dt) => { u.value += (target - u.value) * (1 - Math.exp(-rate * dt)); };
+function randUnit(v = new THREE.Vector3()) {
+  const z = rr(-1, 1), t = rr(0, Math.PI * 2), s = Math.sqrt(1 - z * z);
+  return v.set(s * Math.cos(t), z, s * Math.sin(t));
+}
+
+/* Uniformes compartidos por todos los materiales: una sola actualización por fotograma. */
+const U = {
+  uTime: {value: 0},
+  uGlobal: {value: 1},           // atenuación global (transiciones de navegación)
+  uFogColor: {value: STATE_FOG.forest[0].clone()},
+  uFogDensity: {value: STATE_FOG.forest[1]},
+  uScale: {value: 800},          // altura del framebuffer / 2 (tamaño de partículas)
+};
+
+const GLSL_COMMON = /* glsl */`
+  uniform float uTime; uniform float uGlobal; uniform vec3 uFogColor; uniform float uFogDensity;
+  float fogF(float d){ return clamp(1.0 - exp(-uFogDensity*uFogDensity*d*d), 0.0, 1.0); }
+  float hash2(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+  float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
+    return mix(mix(hash2(i),hash2(i+vec2(1,0)),u.x), mix(hash2(i+vec2(0,1)),hash2(i+vec2(1,1)),u.x), u.y); }
+`;
+const POINT_FRAG = /* glsl */`
+  uniform float uGlobal; varying vec3 vC; varying float vA;
+  void main(){ vec2 c = gl_PointCoord - 0.5; float d = dot(c,c)*4.0; if (d > 1.0 || vA < 0.004) discard;
+    float a = 1.0 - d; a *= a; gl_FragColor = vec4(pow(vC, vec3(2.2)) * vA * uGlobal, a);
+    #include <colorspace_fragment>
+  }
+`;
+function additive(params) {
+  return new THREE.ShaderMaterial({transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, ...params});
+}
+function noPointer(obj) { obj.xb = {pointerEvents: 'none'}; return obj; }
+
+/* Etiqueta de texto ligera (CanvasTexture), se redibuja solo cuando cambia. */
+const FONT_HUD = '"SF Mono", "Roboto Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace';
+const FONT_POEM = 'Georgia, "Noto Serif", "Times New Roman", serif';
+function makeLabel(text, {w = 512, h = 128, width = 0.3, size = 64, color = '#c9d4cf', weight = 500, align = 'center',
+  family = FONT_HUD, style = 'normal', spacing = 0, glow = 0} = {}) {
+  const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const tex = new THREE.CanvasTexture(canvas); tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // Mezcla aditiva: el fondo del cartel (negro/transparente) nunca oscurece la escena.
+  const mat = new THREE.MeshBasicMaterial({map: tex, transparent: true, depthTest: false, depthWrite: false, fog: false, blending: THREE.AdditiveBlending});
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, width * h / w), mat);
+  mesh.renderOrder = 1000;
+  let current = null;
+  mesh.setText = (t) => {
+    if (t === current) return; current = t;
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = `${style} ${weight} ${size}px ${family}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${spacing}px`;
+    ctx.shadowColor = color; ctx.shadowBlur = glow;
+    ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.textAlign = align;
+    ctx.fillText(t, align === 'center' ? w / 2 : align === 'left' ? 8 : w - 8, h / 2);
+    tex.needsUpdate = true;
+  };
+  mesh.setText(text);
+  return noPointer(mesh);
+}
+
+/* =====================================================================
+ * 3. AUDIO: gestor centralizado + sintetizador procedural
+ * ===================================================================== */
+class AudioManager {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.master = ctx.createGain(); this.master.gain.value = 0.9; this.master.connect(ctx.destination);
+    this.ch = {};
+    for (const k of ['amb', 'music', 'narr']) {
+      const g = ctx.createGain(); g.gain.value = k === 'narr' ? 1 : 0; g.connect(this.master); this.ch[k] = g;
+    }
+    this.targets = {amb: 0, music: 0};
+    this.buffers = {};
+    this.narr = null;            // {key, src, gain, endAt}
+    this.ambientEl = null;
+    this.synth = new Synth(ctx, this.ch.music);
+    this.unlocked = false;
+  }
+  async preload() {
+    const keys = [N.a00, N.a01, N.a02, N.a03, N.a04, N.a05, N.a06, N.a07].filter((k) => CONFIG.audio[k]);
+    await Promise.all(keys.map(async (k) => {
+      try {
+        const res = await fetch(direct(CONFIG.audio[k]), {mode: 'cors'});
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        this.buffers[k] = await this.ctx.decodeAudioData(await res.arrayBuffer());
+      } catch (e) { console.warn('[LIQUEN] Audio no disponible:', k, e); }
+    }));
+  }
+  // Debe llamarse dentro del gesto del usuario (botón de la landing).
+  unlock() {
+    if (this.unlocked) { this.ctx.resume?.(); return; }
+    this.unlocked = true;
+    this.ctx.resume?.();
+    // Ambiente por streaming: no se decodifica el archivo completo en memoria.
+    const startStream = (url, gainNode, label) => {
+      try {
+        const el = new Audio(); el.crossOrigin = 'anonymous'; el.loop = true; el.preload = 'auto'; el.src = url;
+        el.addEventListener('error', () => console.warn('[LIQUEN] No se pudo cargar', label));
+        this.ctx.createMediaElementSource(el).connect(gainNode);
+        el.play().catch((e) => console.warn('[LIQUEN] Reproducción bloqueada', label, e));
+        return el;
+      } catch (e) { console.warn('[LIQUEN] Streaming falló', label, e); return null; }
+    };
+    this.ambientEl = startStream(direct(CONFIG.audio[N.amb]), this.ch.amb, N.amb);
+    if (CONFIG.SPORE_MUSIC_URL) {
+      const bed = this.ctx.createGain(); bed.gain.value = 0.6; bed.connect(this.ch.music);
+      startStream(direct(CONFIG.SPORE_MUSIC_URL), bed, 'SPORE_MUSIC_URL');
+    }
+    this.synth.start();
+  }
+  // Crossfade por rampa de volumen (≤ 5 s). Idempotente: no reinicia pistas.
+  mix(amb, music, dur = CONFIG.crossfade) {
+    dur = Math.min(dur, CONFIG.crossfade);
+    const now = this.ctx.currentTime;
+    for (const [k, v] of [['amb', amb], ['music', music]]) {
+      if (this.targets[k] === v) continue;
+      this.targets[k] = v;
+      const g = this.ch[k].gain;
+      g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.linearRampToValueAtTime(v, now + dur);
+    }
+  }
+  // Una sola narración a la vez; no duplica la misma pista si sigue sonando.
+  playNarr(key, {restart = false} = {}) {
+    const buf = this.buffers[key];
+    if (!buf || !this.unlocked) return false;
+    const now = this.ctx.currentTime;
+    if (this.narr && this.narr.key === key && now < this.narr.endAt && !restart) return true;
+    this.stopNarr(0.25);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const g = this.ctx.createGain(); g.gain.value = 1;
+    src.connect(g).connect(this.ch.narr); src.start(now + 0.02);
+    this.narr = {key, src, gain: g, endAt: now + buf.duration};
+    return true;
+  }
+  stopNarr(fade = 0.3) {
+    if (!this.narr) return;
+    const {src, gain} = this.narr; const now = this.ctx.currentTime;
+    gain.gain.cancelScheduledValues(now); gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, now + fade);
+    try { src.stop(now + fade + 0.05); } catch (e) { /* ya detenida */ }
+    this.narr = null;
+  }
+}
+
+/* Sintetizador minimalista (referencias: kalimba, steel drum, campanas tubulares, pads tipo Synplant/Spore). */
+class Synth {
+  constructor(ctx, out) {
+    this.ctx = ctx;
+    this.out = ctx.createGain(); this.out.gain.value = 0.55;
+    // Eco ligero (más barato que una convolución).
+    const delay = ctx.createDelay(1.0); delay.delayTime.value = 0.37;
+    const fb = ctx.createGain(); fb.gain.value = 0.33;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+    const wet = ctx.createGain(); wet.gain.value = 0.32;
+    this.out.connect(out); this.out.connect(delay); delay.connect(lp).connect(fb).connect(delay); lp.connect(wet).connect(out);
+    this.mode = 'none'; this.next = 0; this.turn = 0; this.flags = {};
+    this.started = false;
+  }
+  start() {
+    if (this.started) return; this.started = true;
+    const c = this.ctx;
+    this.padGain = c.createGain(); this.padGain.gain.value = 0;
+    this.padFilter = c.createBiquadFilter(); this.padFilter.type = 'lowpass'; this.padFilter.frequency.value = 500; this.padFilter.Q.value = 2;
+    this.padFilter.connect(this.padGain).connect(this.out);
+    this.pad = [55, 55 * 1.006, 82.41].map((f) => {
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(this.padFilter); o.start(); return o;
+    });
+    const lfo = c.createOscillator(); lfo.frequency.value = 0.07;
+    const lfoG = c.createGain(); lfoG.gain.value = 180; lfo.connect(lfoG).connect(this.padFilter.frequency); lfo.start();
+  }
+  ramp(param, v, dur) {
+    const now = this.ctx.currentTime;
+    param.cancelScheduledValues(now); param.setValueAtTime(param.value, now); param.linearRampToValueAtTime(v, now + dur);
+  }
+  setPad(level, cutoff, notes) {
+    if (!this.started) return;
+    this.ramp(this.padGain.gain, level, 3);
+    this.ramp(this.padFilter.frequency, cutoff, 3);
+    if (notes) notes.forEach((f, i) => this.ramp(this.pad[i].frequency, f, 2.5));
+  }
+  voice(partials, f, when, vel, attack = 0.004) {
+    const c = this.ctx;
+    for (const [ratio, amp, decay, type] of partials) {
+      const o = c.createOscillator(); o.type = type || 'sine'; o.frequency.value = f * ratio;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, when);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vel * amp), when + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+      o.connect(g).connect(this.out); o.start(when); o.stop(when + decay + 0.05);
+    }
+  }
+  kalimba(f, w, v = 0.25) { this.voice([[1, 1, 1.4], [5.4, 0.22, 0.14]], f, w, v); }
+  steel(f, w, v = 0.22) { this.voice([[1, 1, 0.9], [2, 0.45, 0.6], [3.01, 0.22, 0.35], [4.2, 0.1, 0.2]], f, w, v, 0.006); }
+  bell(f, w, v = 0.18) { this.voice([[1, 1, 3.6], [2.76, 0.5, 2.2], [5.4, 0.25, 1.2], [8.93, 0.12, 0.7]], f, w, v, 0.003); }
+
+  setMode(mode) {
+    if (mode === this.mode) return;
+    this.mode = mode; this.next = 0; this.turn = 0; this.flags = {};
+    const P = {
+      none: [0, 400], origin: [0.05, 700], encounter: [0.07, 650, [55, 55.4, 82.41]],
+      cellular: [0.06, 520, [55, 55.3, 69.3]], rock: [0.09, 380, [41.2, 41.4, 61.7]], network: [0.07, 900, [55, 55.4, 82.41]],
+    }[mode] || [0, 400];
+    this.setPad(P[0], P[1], P[2]);
+  }
+  oneShotOrigin() {   // arpegio ascendente al seleccionar el liquen
+    if (!this.started) return;
+    const t = this.ctx.currentTime + 0.05;
+    [440, 554.4, 659.3, 880, 987.8, 1318.5].forEach((f, i) => this.kalimba(f, t + i * 0.2, 0.22));
+  }
+  // Programa eventos con anticipación según el tiempo del estado.
+  tick(st) {
+    if (!this.started) return;
+    const now = this.ctx.currentTime;
+    if (this.next === 0) this.next = now + 0.4;
+    if (now + 0.12 < this.next) return;
+    const w = this.next;
+    const pent = [440, 493.9, 554.4, 659.3, 739.9];
+    switch (this.mode) {
+      case 'encounter': {
+        // Hongo: campanas graves (La3–Mi4). Alga: kalimba aguda (Mi5–Si5). Conversan alternándose.
+        if (st >= 16 && !this.flags.harmony) {
+          this.flags.harmony = true;   // armonía alegre en el contacto
+          [220, 277.2, 329.6, 440].forEach((f, i) => { this.steel(f, w + i * 0.06, 0.2); this.bell(f, w + i * 0.06, 0.1); });
+          this.kalimba(1318.5, w + 0.4, 0.2); this.kalimba(1108.7, w + 0.6, 0.18);
+          this.next = w + 2.4; return;
+        }
+        if (st < 16) {
+          const period = lerp(2.6, 1.3, smooth(2, 16, st));
+          if (this.turn++ % 2 === 0) { this.bell(220, w, 0.16); this.bell(329.6, w + 0.38, 0.13); }
+          else { this.kalimba(659.3, w, 0.22); this.kalimba(987.8, w + 0.28, 0.2); }
+          this.next = w + period;
+        } else {   // dúo unido en terceras
+          this.bell(220, w, 0.1); this.kalimba(659.3, w, 0.16); this.kalimba(554.4, w + 0.3, 0.14); this.kalimba(987.8, w + 0.6, 0.14);
+          this.next = w + 2.2;
+        }
+        break;
+      }
+      case 'cellular':
+        this.kalimba(pent[Math.floor(R() * 5)] * (R() < 0.5 ? 2 : 1), w, 0.12 + R() * 0.08);
+        this.next = w + rr(1.1, 2.5); break;
+      case 'rock':
+        if (st < 9) { this.steel(110, w, 0.22); this.next = w + 3; }
+        else if (st < 20) { this.kalimba(pent[Math.floor(R() * 5)] * 2, w, 0.08 + R() * 0.08); this.next = w + rr(0.22, 0.6); }
+        else if (st < 34) { [220, 277.2, 329.6, 440, 554.4].forEach((f, i) => this.bell(f, w + i * 0.18, 0.09)); this.next = w + 1.6; }
+        else { this.steel(pent[Math.floor(R() * 5)], w, 0.16); this.next = w + rr(0.9, 1.6); }
+        break;
+      case 'network':
+        this.bell([220, 329.6, 440, 554.4][this.turn++ % 4], w, 0.1); this.next = w + 1.8; break;
+      default: this.next = w + 0.5;
+    }
+  }
+}
+
+/* =====================================================================
+ * 4. MATERIALES — todo son líneas y puntos aditivos sobre negro
+ *    (sin luces ni sombreado; la profundidad = opacidad + niebla hacia negro)
+ * ===================================================================== */
+const V3 = THREE.Vector3;
+const WHITE = new V3(1, 1, 1);
+const UP = new V3(0, 1, 0);
+
+// Atributos comunes a todas las geometrías:
+//   aT    = orden de aparición (0..1) frente a uGrow  → revelado progresivo / "tiempo geológico"
+//   aSway = amplitud de balanceo (m)                  → liquen colgante, helechos, polvo
+//   aSeed = semilla aleatoria; aCol = color por vértice (se multiplica por uColor)
+const LINE_VS = /* glsl */`
+  ${GLSL_COMMON}
+  uniform float uGrow, uAlpha, uSwayAmp, uDesat; uniform vec3 uColor;
+  attribute float aT, aSway, aSeed; attribute vec3 aCol;
+  varying vec3 vC; varying float vA;
+  void main(){
+    vec3 p = position;
+    float sw = aSway * uSwayAmp;
+    p.x += sin(uTime*0.9 + aSeed*6.283 + p.y*1.7) * sw;
+    p.z += cos(uTime*0.7 + aSeed*4.0 + p.y*1.3) * sw * 0.7;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float rev = smoothstep(aT, aT + 0.035, uGrow);
+    float tip = step(aT, uGrow) * exp(-(uGrow - aT) * 40.0) * step(uGrow, 0.995);   // punta de crecimiento brillante
+    vC = uColor * aCol;
+    vC = mix(vC, vec3(dot(vC, vec3(0.299, 0.587, 0.114))), uDesat);   // desaturación (escena 1)
+    vA = (rev + tip * 1.5) * uAlpha * (1.0 - fogF(-mv.z));
+  }`;
+const LINE_FS = /* glsl */`
+  uniform float uGlobal; varying vec3 vC; varying float vA;
+  void main(){
+    if (vA < 0.003) discard;
+    gl_FragColor = vec4(pow(vC, vec3(2.2)) * vA * uGlobal, 1.0);
+    #include <colorspace_fragment>
+  }`;
+const POINT_VS = /* glsl */`
+  ${GLSL_COMMON}
+  uniform float uGrow, uAlpha, uSwayAmp, uSize, uScale, uDesat; uniform vec3 uColor;
+  attribute float aT, aSway, aSeed; attribute vec3 aCol;
+  varying vec3 vC; varying float vA;
+  void main(){
+    vec3 p = position;
+    float sw = aSway * uSwayAmp;
+    p.x += sin(uTime*0.5 + aSeed*12.0) * sw; p.y += sin(uTime*0.37 + aSeed*7.0) * sw * 0.6; p.z += cos(uTime*0.43 + aSeed*9.0) * sw;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float rev = smoothstep(aT, aT + 0.05, uGrow);
+    gl_PointSize = clamp(uSize * (0.6 + 0.8*aSeed) * rev * uScale * projectionMatrix[1][1] / max(-mv.z, 0.05), 1.0, 24.0);
+    vC = uColor * aCol;
+    vC = mix(vC, vec3(dot(vC, vec3(0.299, 0.587, 0.114))), uDesat);
+    vA = rev * uAlpha * (0.75 + 0.25*sin(uTime*1.7 + aSeed*30.0)) * (1.0 - fogF(-mv.z));
+  }`;
+
+function lineMaterial(color, alpha = 1, sway = 0) {
+  return additive({uniforms: {...U, uGrow: {value: 1}, uAlpha: {value: alpha}, uSwayAmp: {value: sway}, uDesat: {value: 0}, uColor: {value: hex(color)}},
+    vertexShader: LINE_VS, fragmentShader: LINE_FS});
+}
+function pointMaterial(color, size, alpha = 1, sway = 0) {
+  return additive({uniforms: {...U, uGrow: {value: 1}, uAlpha: {value: alpha}, uSwayAmp: {value: sway}, uDesat: {value: 0}, uSize: {value: size}, uColor: {value: hex(color)}},
+    vertexShader: POINT_VS, fragmentShader: POINT_FRAG});
+}
+
+/* Acumulador de vértices → BufferGeometry con los atributos comunes. */
+class Batch {
+  constructor() { this.p = []; this.t = []; this.w = []; this.s = []; this.c = []; }
+  v(p, t = 0, sway = 0, seed = 0, col = WHITE) {
+    this.p.push(p.x, p.y, p.z); this.t.push(Math.min(0.96, Math.max(0, t))); this.w.push(sway); this.s.push(seed); this.c.push(col.x, col.y, col.z);
+  }
+  seg(a, b, ta = 0, tb = ta, wa = 0, wb = wa, seed = 0, col = WHITE) { this.v(a, ta, wa, seed, col); this.v(b, tb, wb, seed, col); }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+    g.setAttribute('aT', new THREE.Float32BufferAttribute(this.t, 1));
+    g.setAttribute('aSway', new THREE.Float32BufferAttribute(this.w, 1));
+    g.setAttribute('aSeed', new THREE.Float32BufferAttribute(this.s, 1));
+    g.setAttribute('aCol', new THREE.Float32BufferAttribute(this.c, 3));
+    return g;
+  }
+  lines(mat) { const o = new THREE.LineSegments(this.geometry(), mat); o.frustumCulled = false; return o; }
+  points(mat) { const o = new THREE.Points(this.geometry(), mat); o.frustumCulled = false; return o; }
+}
+// Base ortonormal perpendicular a una dirección.
+function basis(dir) {
+  const u = Math.abs(dir.y) < 0.9 ? new V3(0, 1, 0) : new V3(1, 0, 0);
+  const a = new V3().crossVectors(dir, u).normalize();
+  const b = new V3().crossVectors(dir, a).normalize();
+  return [a, b];
+}
+
+/* =====================================================================
+ * 5. BIBLIOTECA DE GEOMETRÍA PROCEDURAL (se construye una sola vez)
+ * ===================================================================== */
+const ROCK_POS = new V3(0, 0.3, -2.4);
+const ROCK_TOP = new V3(0, 0.95, -2.4);
+const FAUNA_POS = {
+  chucao: new V3(-1.05, 0, -1.65),
+  ciervo: new V3(1.25, 0.05, -1.95),
+  ranita: new V3(0.5, 0.02, -1.42),
+};
+const LICHEN_ANGLES = [-0.75, 0.8, 1.6, -1.6, 2.5, -2.45];   // 0 = frente (-Z)
+const distRock = (x, z) => Math.hypot(x - ROCK_POS.x, z - ROCK_POS.z);
+const dN = (x, z) => clamp01(distRock(x, z) / 35);           // distancia normalizada (orden de crecimiento)
+
+/* Tronco: cilindro de pocas aristas verticales + anillos horizontales. */
+function trunkLines(B, base, dir, H, R0, R1, t0, t1, seed, nV = 6, ringStep = 1.0) {
+  const [a, b] = basis(dir);
+  const nk = Math.max(2, Math.round(H / ringStep));
+  const ph = R() * 6.283;
+  const P = (k, i) => {
+    const h = H * k / nk, r = lerp(R0, R1, k / nk), ang = ph + (i / nV) * 6.283;
+    return base.clone().addScaledVector(dir, h).addScaledVector(a, Math.cos(ang) * r).addScaledVector(b, Math.sin(ang) * r);
+  };
+  const T = (k) => lerp(t0, t1, k / nk);
+  for (let k = 0; k < nk; k++) for (let i = 0; i < nV; i++) B.seg(P(k, i), P(k + 1, i), T(k), T(k + 1), 0, 0, seed);
+  for (let k = 0; k <= nk; k += 2) for (let i = 0; i < nV; i++) B.seg(P(k, i), P(k, (i + 1) % nV), T(k), T(k), 0, 0, seed);
+}
+
+/* Rama recursiva (tipo L-system): se afina y se abre hacia arriba. Guarda nodos para el liquen colgante. */
+function branchLines(B, start, dir, len, depth, maxDepth, t0, tSpan, seed, nodes) {
+  let p = start.clone(); const d = dir.clone(); const n = 4; const tmp = new V3();
+  for (let j = 0; j < n; j++) {
+    d.add(randUnit(tmp).multiplyScalar(0.16)).addScaledVector(UP, 0.07).normalize();
+    const q = p.clone().addScaledVector(d, len / n);
+    const ta = t0 + tSpan * j / n, tb = t0 + tSpan * (j + 1) / n;
+    B.seg(p, q, ta, tb, 0, 0, seed);
+    nodes.push({p: q, t: tb, depth});
+    p = q;
+  }
+  if (depth < maxDepth) {
+    const kids = 2 + (R() < 0.3 ? 1 : 0);
+    for (let k = 0; k < kids; k++) {
+      const nd = d.clone().add(randUnit(tmp).multiplyScalar(0.75)).addScaledVector(UP, 0.3).normalize();
+      branchLines(B, p, nd, len * 0.66, depth + 1, maxDepth, t0 + tSpan, tSpan * 0.8, seed, nodes);
+    }
+  }
+}
+
+/* Liquen colgante (barba): polilínea corta y ondulada que cuelga y se balancea. */
+function barbLines(B, top, t0, seed) {
+  const strands = 1 + Math.floor(R() * 3);
+  for (let s = 0; s < strands; s++) {
+    const L = rr(0.3, 1.0), n = 6, ph = R() * 6.28;
+    let p = top.clone().add(new V3(rr(-0.04, 0.04), 0, rr(-0.04, 0.04)));
+    for (let j = 0; j < n; j++) {
+      const q = p.clone().add(new V3(Math.sin(ph + j * 1.3) * 0.025, -L / n, Math.cos(ph + j * 1.1) * 0.025));
+      B.seg(p, q, t0 + 0.012 * j, t0 + 0.012 * (j + 1), 0.06 * j / n, 0.06 * (j + 1) / n, R());
+      p = q;
+    }
+  }
+}
+
+/* Helecho: frondas arqueadas en abanico con foliolos. */
+function fernLines(B, base, t0, scale = 1) {
+  const fronds = 5 + Math.floor(R() * 3);
+  for (let f = 0; f < fronds; f++) {
+    const az = (f / fronds) * 6.283 + rr(-0.3, 0.3);
+    const dirH = new V3(Math.sin(az), 0, Math.cos(az)), side = new V3(Math.cos(az), 0, -Math.sin(az));
+    const L = rr(0.5, 1.1) * scale, Hh = rr(0.3, 0.6) * scale, seed = R();
+    const P = (s) => base.clone().addScaledVector(dirH, L * s).addScaledVector(UP, Hh * (2.2 * s - 2.0 * s * s));
+    const n = 8;
+    for (let j = 0; j < n; j++) B.seg(P(j / n), P((j + 1) / n), t0 + 0.12 * j / n, t0 + 0.12 * (j + 1) / n, 0.035 * j / n, 0.035 * (j + 1) / n, seed);
+    for (let j = 1; j <= 5; j++) {
+      const s = j / 6, a = P(s), ll = 0.13 * L * (1 - s * 0.75);
+      for (const sg of [-1, 1]) {
+        const e = a.clone().addScaledVector(side, sg * ll).addScaledVector(dirH, ll * 0.45).addScaledVector(UP, -ll * 0.25);
+        B.seg(a, e, t0 + 0.12 * s, t0 + 0.12 * s + 0.02, 0.035 * s, 0.035 * s + 0.01, seed);
+      }
+    }
+  }
+}
+
+/* Hierbas pioneras: matas de hojas curvas. */
+function herbLines(B, base, t0) {
+  const blades = 4 + Math.floor(R() * 3);
+  for (let i = 0; i < blades; i++) {
+    const az = R() * 6.283, h = rr(0.12, 0.4), lean = rr(0.04, 0.16), seed = R();
+    const o = base.clone().add(new V3(rr(-0.03, 0.03), 0, rr(-0.03, 0.03)));
+    let prev = o;
+    for (let k = 1; k <= 3; k++) {
+      const s = k / 3;
+      const q = o.clone().add(new V3(Math.sin(az) * lean * s * s, h * s, Math.cos(az) * lean * s * s));
+      B.seg(prev, q, t0 + 0.03 * (k - 1), t0 + 0.03 * k, 0.015 * (k - 1) / 3, 0.015 * s, seed);
+      prev = q;
+    }
+  }
+}
+
+/* Flor: contorno 2D irregular (estrella o trébol) con aspecto de dibujo a mano + puntos centrales. */
+function flowerLines(B, PB, base, t0, col) {
+  const stemH = rr(0.18, 0.5), seed = R();
+  const head = base.clone().add(new V3(rr(-0.04, 0.04), stemH, rr(-0.04, 0.04)));
+  const stemCol = hex(PAL.lime).multiplyScalar(0.6);
+  B.seg(base, base.clone().lerp(head, 0.5).add(new V3(0.01, 0, 0)), t0, t0 + 0.02, 0, 0.01, seed, stemCol);
+  B.seg(base.clone().lerp(head, 0.5).add(new V3(0.01, 0, 0)), head, t0 + 0.02, t0 + 0.04, 0.01, 0.02, seed, stemCol);
+  const normal = UP.clone().add(randUnit(new V3()).multiplyScalar(0.7)).normalize();
+  const [a, b] = basis(normal);
+  const petals = R() < 0.5 ? 5 : 3, Rr = rr(0.035, 0.07), n = 18;
+  let prev = null;
+  for (let i = 0; i <= n; i++) {
+    const ph = (i % n) / n * 6.283;
+    const r = Rr * (0.5 + 0.5 * Math.abs(Math.cos(petals * ph / 2))) * (1 + 0.14 * (R() - 0.5));
+    const q = head.clone().addScaledVector(a, Math.cos(ph) * r).addScaledVector(b, Math.sin(ph) * r);
+    if (prev) B.seg(prev, q, t0 + 0.05, t0 + 0.05, 0.02, 0.02, seed, col);
+    prev = q;
+  }
+  for (let k = 0; k < 5; k++) PB.v(head.clone().add(randUnit(new V3()).multiplyScalar(Rr * 0.18)), t0 + 0.05, 0, R(), hex(PAL.yellow));
+}
+
+/* Mancha de liquen foliáceo sobre la superficie de un tronco (roseta lobulada de puntos). */
+function lichenPatch(arr, tr, hc, face, Rp, nPts, cluster) {
+  const lobes = 5 + Math.floor(R() * 4);
+  const center = new V3(tr.x + Math.sin(face) * tr.rad, hc, tr.z + Math.cos(face) * tr.rad);
+  for (let i = 0; i < nPts; i++) {
+    const phi = R() * 6.283;
+    const rmax = Rp * (0.6 + 0.4 * Math.abs(Math.sin(lobes * phi / 2)));
+    const r = rmax * Math.sqrt(R());
+    const th = face + (r * Math.cos(phi)) / tr.rad, h = hc + r * Math.sin(phi);
+    const rad = tr.rad * (1 - 0.35 * h / tr.h) + 0.012;
+    arr.pos.push(tr.x + Math.sin(th) * rad, h, tr.z + Math.cos(th) * rad);
+    arr.cl.push(cluster); arr.seed.push(R()); arr.t.push(r / rmax); arr.cen.push(center.x, center.y, center.z);
+  }
+  return center;
+}
+
+function buildForest() {
+  const S = new Batch(), BB = new Batch(), FB = new Batch(), HB = new Batch(), FLB = new Batch(), FLP = new Batch(), MB = new Batch(), DB = new Batch();
+  const lichenArr = {pos: [], cl: [], seed: [], t: [], cen: []};
+  const lichenCenters = [], trunkBases = [];
+  const free = (x, z, rUser, rRock) => Math.hypot(x, z) > rUser && distRock(x, z) > rRock;
+  const polar = (rMin, rMax, pw = 1.4) => { const r = rMin + (rMax - rMin) * Math.pow(R(), pw), a = R() * 6.283; return [Math.sin(a) * r, -Math.cos(a) * r, r]; };
+  const K = {
+    alerce: {h: [16, 24], rad: [0.35, 0.5], prims: 8, len: [1.0, 2.0], depth: 2, start: 0.45},
+    nativo: {h: [10, 18], rad: [0.25, 0.42], prims: 4, len: [2.4, 4.0], depth: 3, start: 0.55},
+    arrayan: {h: [5, 8], rad: [0.1, 0.18], prims: 3, len: [1.2, 2.0], depth: 2, start: 0.6},
+  };
+  const addTree = (x, z, kind, opts = {}) => {
+    const k = K[kind], r = Math.hypot(x, z), d = dN(x, z), seed = R();
+    const tb = 0.02 + 0.35 * d;              // árboles: lo último en crecer, desde la roca hacia afuera
+    const stems = kind === 'arrayan' ? 2 + Math.floor(R() * 2) : 1;
+    trunkBases.push(new V3(x, 0, z));
+    for (let s = 0; s < stems; s++) {
+      const H = rr(...k.h), rad = opts.rad ?? rr(...k.rad);
+      const la = R() * 6.283, lean = opts.noLean ? 0 : (kind === 'arrayan' ? rr(0.1, 0.25) : rr(0, 0.04));
+      const dir = new V3(Math.cos(la) * lean, 1, Math.sin(la) * lean).normalize();
+      const base = new V3(x + (stems > 1 ? Math.cos(la) * 0.2 : 0), 0, z + (stems > 1 ? Math.sin(la) * 0.2 : 0));
+      trunkLines(S, base, dir, H, rad, rad * 0.65, tb, tb + 0.25, seed);
+      const nodes = [];
+      for (let p = 0; p < k.prims; p++) {
+        const hf = lerp(k.start, 0.95, (p + R() * 0.5) / k.prims);
+        const st = base.clone().addScaledVector(dir, H * hf);
+        const az = R() * 6.283, up = kind === 'alerce' ? rr(0.5, 0.9) : rr(0.25, 0.7);
+        const bd = new V3(Math.cos(az), up, Math.sin(az)).normalize();
+        branchLines(S, st, bd, rr(...k.len), 0, k.depth, tb + 0.25 * hf, 0.07, seed, nodes);
+      }
+      // Ramas bajas en árboles cercanos: acercan el liquen colgante a la vista.
+      if (r < 10 && kind !== 'arrayan') {
+        for (let p = 0; p < 2; p++) {
+          const st = base.clone().addScaledVector(dir, rr(1.8, 3.6));
+          const az = R() * 6.283, bd = new V3(Math.cos(az), rr(0.1, 0.4), Math.sin(az)).normalize();
+          const low = [];
+          branchLines(S, st, bd, rr(0.8, 1.6), 0, 1, tb + 0.05, 0.06, seed, low);
+          for (const n of low) if (R() < 0.7) barbLines(BB, n.p, n.t + 0.03, seed);
+        }
+      }
+      if (r < 24) for (const n of nodes) if (n.depth >= 1 && R() < 0.22) barbLines(BB, n.p, n.t + 0.03, seed);
+      // Manchas de liquen en troncos rectos.
+      if (s === 0 && kind !== 'arrayan' && !opts.lichen && r < 25 && R() < 0.65) {
+        const tr = {x: base.x, z: base.z, rad, h: H};
+        for (let m = 0; m < 1 + Math.floor(R() * 2); m++) lichenPatch(lichenArr, tr, rr(0.6, 3.0), R() * 6.283, rr(0.08, 0.16), 50 + Math.floor(R() * 50), -5);
+      }
+      if (s === 0 && opts.lichen) {
+        const tr = {x: base.x, z: base.z, rad, h: H};
+        lichenCenters.push(lichenPatch(lichenArr, tr, rr(1.2, 1.5), Math.atan2(-x, -z), 0.2, 320, lichenCenters.length));
+      }
+      // Musgo en la base del tronco.
+      for (let m = 0; m < 26; m++) {
+        const a = R() * 6.283, rr2 = rad + rr(0, 0.45);
+        MB.v(new V3(base.x + Math.cos(a) * rr2, rr(0, 0.12), base.z + Math.sin(a) * rr2), 0.05 + 0.6 * d, 0, R());
+      }
+    }
+  };
+  for (const a of LICHEN_ANGLES) {
+    const r = rr(2.9, 3.6);
+    addTree(Math.sin(a) * r, -Math.cos(a) * r, 'nativo', {rad: rr(0.34, 0.45), noLean: true, lichen: true});
+  }
+  const place = (n, kind, rMin, rMax) => {
+    for (let i = 0, tries = 0; i < n && tries < n * 40; tries++) {
+      const [x, z] = polar(rMin, rMax);
+      if (!free(x, z, rMin, 2.0)) continue;
+      addTree(x, z, kind); i++;
+    }
+  };
+  place(14, 'alerce', 8, 36); place(14, 'arrayan', 3.5, 24); place(24, 'nativo', 4.5, 36);
+  // Troncos caídos.
+  for (let i = 0, tries = 0; i < 6 && tries < 200; tries++) {
+    const [x, z] = polar(4, 18, 1); if (!free(x, z, 3.5, 2.5)) continue;
+    const yaw = R() * 6.283, dir = new V3(Math.cos(yaw), 0.02, Math.sin(yaw)).normalize(), len = rr(3, 5.5), rad = rr(0.22, 0.35);
+    const base = new V3(x, rad, z).addScaledVector(dir, -len / 2);
+    trunkLines(S, base, dir, len, rad, rad * 0.85, 0.15 + 0.3 * dN(x, z), 0.3 + 0.3 * dN(x, z), R(), 6, 0.6);
+    for (let m = 0; m < 60; m++) MB.v(base.clone().addScaledVector(dir, R() * len).add(new V3(rr(-rad, rad), rad * rr(0.6, 1.1), rr(-rad, rad))), 0.05 + 0.6 * dN(x, z), 0, R());
+    i++;
+  }
+  // Sotobosque: helechos, hierbas pioneras, flores.
+  for (let i = 0, tries = 0; i < 95 && tries < 3000; tries++) {
+    const [x, z] = polar(1.6, 22, 1.2); if (!free(x, z, 1.6, 1.5)) continue;
+    fernLines(FB, new V3(x, 0, z), 0.05 + 0.5 * dN(x, z), rr(0.7, 1.2)); i++;
+  }
+  for (let i = 0, tries = 0; i < 230 && tries < 3000; tries++) {
+    const [x, z] = polar(0.9, 20, 1.3); if (!free(x, z, 0.9, 1.15)) continue;
+    herbLines(HB, new V3(x, 0, z), 0.02 + 0.5 * dN(x, z)); i++;
+  }
+  for (let i = 0, tries = 0; i < 70 && tries < 3000; tries++) {
+    const [x, z] = polar(1.2, 16, 1.3); if (!free(x, z, 1.2, 1.2)) continue;
+    flowerLines(FLB, FLP, new V3(x, 0, z), 0.08 + 0.5 * dN(x, z), hex(ACCENTS[Math.floor(R() * 4)])); i++;
+  }
+  // Polvo del suelo (ámbar): define el piso como en un escaneo LiDAR; una parte flota y deriva.
+  for (let i = 0; i < 3600; i++) { const [x, z] = polar(0.5, 34, 1.6); DB.v(new V3(x, rr(0, 0.03), z), 0, 0, R()); }
+  for (let i = 0; i < 500; i++) { const [x, z] = polar(0.8, 14, 1.2); DB.v(new V3(x, rr(0.2, 3), z), 0, 0.18, R()); }
+  // Musgo suelto.
+  for (let c = 0; c < 60; c++) {
+    const [x, z] = polar(1.4, 24, 1.2); if (!free(x, z, 1.4, 1.2)) continue;
+    for (let m = 0; m < 30; m++) MB.v(new V3(x + rr(-0.35, 0.35), rr(0, 0.08), z + rr(-0.35, 0.35)), 0.03 + 0.6 * dN(x, z), 0, R());
+  }
+  const fam = {
+    struct: S.lines(lineMaterial(PAL.teal, 0.5)),
+    barbs: BB.lines(lineMaterial(PAL.mint, 0.95, 1)),
+    ferns: FB.lines(lineMaterial(PAL.lime, 0.55, 1)),
+    herbs: HB.lines(lineMaterial(PAL.lime, 0.6, 1)),
+    flowers: FLB.lines(lineMaterial(0xffffff, 0.9, 1)),
+    flowerPts: FLP.points(pointMaterial(0xffffff, 0.012, 1)),
+    moss: MB.points(pointMaterial(PAL.lime, 0.014, 0.55)),
+    dust: DB.points(pointMaterial(PAL.amber, 0.012, 0.32, 1)),
+  };
+  return {fam, lichenArr, lichenCenters, trunkBases};
+}
+
+/* Manchas de liquen (todas en un solo Points): las 6 seleccionables tienen índice 0..5. */
+function buildLichenPoints(arr) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(arr.pos, 3));
+  g.setAttribute('aCluster', new THREE.Float32BufferAttribute(arr.cl, 1));
+  g.setAttribute('aSeed', new THREE.Float32BufferAttribute(arr.seed, 1));
+  g.setAttribute('aT', new THREE.Float32BufferAttribute(arr.t, 1));
+  g.setAttribute('aCenter', new THREE.Float32BufferAttribute(arr.cen, 3));
+  const mat = additive({
+    uniforms: {...U, uReveal: {value: 1}, uSel: {value: -1}, uSelAmt: {value: 0}, uHover: {value: -1}, uAlpha: {value: 1}, uSelectable: {value: 0}},
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uScale, uReveal, uSel, uSelAmt, uHover, uAlpha, uSelectable;
+      attribute float aCluster, aSeed, aT; attribute vec3 aCenter;
+      varying vec3 vC; varying float vA;
+      void main(){
+        float rev = smoothstep(aT*0.8, aT*0.8 + 0.2, uReveal);
+        float selectable = step(-0.5, aCluster);
+        float isSel = 1.0 - step(0.5, abs(aCluster - uSel));
+        float isHov = 1.0 - step(0.5, abs(aCluster - uHover));
+        vec3 dir = normalize(position - aCenter + vec3(0.0001));
+        vec3 p = position + dir * isSel * uSelAmt * (0.12 + 0.45*aSeed);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        // Las manchas seleccionables "respiran" para invitar a apuntarlas.
+        float breath = 0.75 + 0.25*sin(uTime*2.0 + aSeed*20.0 + aT*8.0) + selectable*uSelectable*0.35*sin(uTime*2.4);
+        float s = 0.013*(0.6 + 0.8*aSeed)*(1.0 + isHov*0.8 + isSel*uSelAmt*1.6)*rev;
+        gl_PointSize = clamp(s*uScale*projectionMatrix[1][1]/max(-mv.z,0.05), 1.0, 24.0);
+        gl_Position = projectionMatrix * mv;
+        vA = rev*breath*(0.55 + 0.6*isHov + 1.2*isSel*uSelAmt)*(1.0 - fogF(-mv.z))*uAlpha;
+        vC = mix(vec3(0.77,1.0,0.9), vec3(0.85,1.0,0.6), aT);
+      }`,
+    fragmentShader: POINT_FRAG,
+  });
+  const pts = new THREE.Points(g, mat); pts.frustumCulled = false;
+  return pts;
+}
+
+/* Roca: icosaedro subdividido y deformado, en wireframe lavanda + colonias que crecen desde semillas. */
+function buildRock() {
+  let geo = new THREE.IcosahedronGeometry(0.85, 2);
+  geo.deleteAttribute('normal'); geo.deleteAttribute('uv');
+  geo = mergeVertices(geo);
+  const p = geo.attributes.position, v = new V3();
+  const n3 = (x, y, z) => Math.sin(x * 1.7 + Math.sin(z * 2.3)) * 0.5 + Math.sin(y * 2.9 + x * 1.3) * 0.3 + Math.sin(z * 4.1 + y * 3.7) * 0.2;
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    v.multiplyScalar(1 + 0.17 * n3(v.x * 2, v.y * 2, v.z * 2) + 0.05 * n3(v.x * 7, v.y * 7, v.z * 7));
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  const group = new THREE.Group(); group.position.copy(ROCK_POS); group.scale.set(1.3, 0.75, 1.0);
+  const wire = new THREE.WireframeGeometry(geo);
+  const WB = new Batch(), wp = wire.attributes.position;
+  for (let i = 0; i < wp.count; i += 2) WB.seg(new V3().fromBufferAttribute(wp, i), new V3().fromBufferAttribute(wp, i + 1), 0, 0, 0, 0, R());
+  const lines = WB.lines(lineMaterial(PAL.lavender, 0.55));
+  const VB = new Batch();
+  for (let i = 0; i < p.count; i++) VB.v(new V3().fromBufferAttribute(p, i), 0, 0, R());
+  const verts = VB.points(pointMaterial(PAL.lavender, 0.01, 0.8));
+  // Colonias: puntos sobre la superficie (muestreo por triángulos), crecen desde semillas en la parte alta.
+  const idx = geo.index.array, tri = [];
+  for (let i = 0; i < idx.length; i += 3) tri.push([idx[i], idx[i + 1], idx[i + 2]]);
+  const A = new V3(), Bv = new V3(), Cv = new V3();
+  const sample = () => { const t = tri[Math.floor(R() * tri.length)]; A.fromBufferAttribute(p, t[0]); Bv.fromBufferAttribute(p, t[1]); Cv.fromBufferAttribute(p, t[2]);
+    let u = R(), w = R(); if (u + w > 1) { u = 1 - u; w = 1 - w; } return A.clone().addScaledVector(Bv.clone().sub(A), u).addScaledVector(Cv.clone().sub(A), w); };
+  const seeds = [];
+  while (seeds.length < 10) { const s = sample(); if (s.y > 0.15 || seeds.length > 6) seeds.push({p: s, col: R() < 0.55 ? hex(PAL.mint) : hex(ACCENTS[Math.floor(R() * 4)]), R: rr(0.25, 0.6), d: seeds.length * 0.04}); }
+  const CB = new Batch();
+  for (let i = 0; i < 4200; i++) {
+    const q = sample();
+    let best = null, bd = 1e9;
+    for (const s of seeds) { const d = q.distanceTo(s.p) / s.R; if (d < bd) { bd = d; best = s; } }
+    if (bd > 1.0 + 0.25 * Math.sin(q.x * 9 + q.z * 7)) continue;
+    CB.v(q.multiplyScalar(1.01), Math.min(0.95, best.d + bd * 0.55), 0, R(), best.col);
+  }
+  const colonies = CB.points(pointMaterial(0xffffff, 0.018, 1));
+  group.add(lines, verts, colonies);
+  return {group, lines, verts, colonies};
+}
+
+/* Colonias de liquen en el suelo alrededor de la roca (crecen hacia afuera). */
+function buildGroundColonies() {
+  const B = new Batch();
+  for (let c = 0; c < 16; c++) {
+    const a = R() * 6.283, r = rr(1.0, 4.2);
+    const cx = ROCK_POS.x + Math.cos(a) * r, cz = ROCK_POS.z + Math.sin(a) * r;
+    if (Math.hypot(cx, cz) < 0.8) continue;
+    const col = R() < 0.6 ? hex(PAL.mint) : hex(ACCENTS[Math.floor(R() * 4)]);
+    const lobes = 5 + Math.floor(R() * 4), Rc = rr(0.12, 0.3);
+    for (let i = 0; i < 110; i++) {
+      const phi = R() * 6.283, rmax = Rc * (0.6 + 0.4 * Math.abs(Math.sin(lobes * phi / 2))), rr2 = rmax * Math.sqrt(R());
+      B.v(new V3(cx + Math.cos(phi) * rr2, 0.012, cz + Math.sin(phi) * rr2), clamp01((r - 1) / 3.4) * 0.6 + 0.3 * rr2 / rmax, 0, R(), col);
+    }
+  }
+  return B.points(pointMaterial(0xffffff, 0.016, 0.9));
+}
+
+/* Talo de liquen (vista completa) que desciende sobre la roca. */
+function buildLichenBody() {
+  const B = new Batch(), L = new Batch(), mint = hex(PAL.mint);
+  const lobes = 7;
+  for (let l = 0; l < lobes; l++) {
+    const walkers = [{a: (l / lobes) * 6.283 + rr(-0.2, 0.2), r: 0.02}];
+    let n = 0;
+    while (walkers.length && n < 110) {
+      const w = walkers.shift(); let prev = null;
+      for (let i = 0; i < 14 && n < 110; i++) {
+        w.r += rr(0.012, 0.02); w.a += rr(-0.12, 0.12) / Math.max(w.r, 0.05) * 0.08;
+        if (w.r > 0.3) break;
+        const q = new V3(Math.cos(w.a) * w.r, 0.03 * (1 - w.r / 0.3) + rr(0, 0.01), Math.sin(w.a) * w.r);
+        B.v(q, w.r / 0.3, 0, R(), mint); if (prev) L.seg(prev, q, w.r / 0.3, w.r / 0.3, 0, 0, R(), mint);
+        prev = q; n++;
+        if (R() < 0.2) walkers.push({a: w.a + rr(-0.25, 0.25), r: w.r});
+      }
+    }
+  }
+  const g = new THREE.Group();
+  g.add(B.points(pointMaterial(0xffffff, 0.013, 1)), L.lines(lineMaterial(0xffffff, 0.6)));
+  return g;
+}
+
+function buildSpores(count = 1600) {
+  const pos = [], dir = [], seed = [];
+  const tmp = new THREE.Vector3();
+  for (let i = 0; i < count; i++) {
+    const r = 0.28 * Math.sqrt(R()), a = R() * 6.28;
+    pos.push(ROCK_TOP.x + Math.cos(a) * r, ROCK_TOP.y + rr(0.04, 0.38), ROCK_TOP.z + Math.sin(a) * r);
+    randUnit(tmp); tmp.y = Math.abs(tmp.y) * 0.6 - 0.05; tmp.normalize();
+    dir.push(tmp.x, tmp.y, tmp.z); seed.push(R());
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 3));
+  g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  const mat = additive({
+    uniforms: {...U, uDisp: {value: 0}, uAlpha: {value: 0}, uBreath: {value: 0}},
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uScale, uDisp, uAlpha, uBreath; attribute vec3 aDir; attribute float aSeed;
+      varying vec3 vC; varying float vA;
+      void main(){
+        float k = clamp(uDisp * (0.55 + 0.6*aSeed) * 1.3, 0.0, 1.0);
+        float e = 1.0 - pow(1.0 - k, 3.0);
+        vec3 p = position + aDir * e * (3.0 + 22.0*aSeed);
+        p.y += sin(uTime*1.3 + aSeed*30.0) * 0.03 * (1.0 + e*10.0) + e*e*2.0*aSeed;
+        p.x += sin(uTime*0.6 + aSeed*12.0) * 0.04 * (1.0 + e*8.0);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = clamp(0.018*(0.6+0.8*aSeed)*uScale*projectionMatrix[1][1]/max(-mv.z,0.05), 1.5, 22.0);
+        gl_Position = projectionMatrix * mv;
+        vC = mix(vec3(0.77,1.0,0.9), vec3(1.0,0.92,0.31), aSeed*aSeed);
+        vA = uAlpha * (0.6 + 0.4*sin(uTime*3.0 + aSeed*40.0)) * (1.0 + uBreath*0.9*sin(uTime*3.2)) * (1.0 - fogF(-mv.z));
+      }`,
+    fragmentShader: POINT_FRAG,
+  });
+  const pts = new THREE.Points(g, mat); pts.frustumCulled = false;
+  return pts;
+}
+
+function buildNetwork(nodes, rockIdx) {
+  const links = [];
+  const has = new Set();
+  const key = (a, b) => (a < b ? a + '-' + b : b + '-' + a);
+  nodes.forEach((n, i) => {
+    const near = nodes.map((m, j) => [j, m.distanceTo(n)]).filter(([j]) => j !== i).sort((a, b) => a[1] - b[1]).slice(0, 2 + Math.floor(R() * 2));
+    for (const [j] of near) { const k = key(i, j); if (!has.has(k)) { has.add(k); links.push([i, j]); } }
+  });
+  for (let i = 0; i < 14; i++) { const j = Math.floor(R() * nodes.length); const k = key(rockIdx, j); if (j !== rockIdx && !has.has(k)) { has.add(k); links.push([rockIdx, j]); } }
+  const palette = [PAL.mint, PAL.magenta, PAL.yellow, PAL.cyan].map(hex);
+  const SEG = 14;
+  const pos = [], tt = [], len = [], seed = [], col = [], dr = [];
+  const curves = [];
+  const rock = nodes[rockIdx];
+  for (const [i, j] of links) {
+    const a = nodes[i], b = nodes[j], L = a.distanceTo(b);
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    const side = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3(0, 1, 0)).normalize();
+    const c1 = mid.clone().add(new THREE.Vector3(0, 0.25 * L + 0.2, 0)).addScaledVector(side, rr(-0.2, 0.2) * L);
+    const curve = new THREE.QuadraticBezierCurve3(a, c1, b); curves.push(curve);
+    const s = R(), cc = palette[Math.floor(R() * 4)];
+    let prev = curve.getPoint(0);
+    for (let k = 1; k <= SEG; k++) {
+      const p = curve.getPoint(k / SEG);
+      pos.push(prev.x, prev.y, prev.z, p.x, p.y, p.z);
+      tt.push((k - 1) / SEG, k / SEG); len.push(L, L); seed.push(s, s);
+      col.push(cc.x, cc.y, cc.z, cc.x, cc.y, cc.z);
+      dr.push(prev.distanceTo(rock), p.distanceTo(rock));
+      prev = p;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aT', new THREE.Float32BufferAttribute(tt, 1));
+  g.setAttribute('aLen', new THREE.Float32BufferAttribute(len, 1));
+  g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aD', new THREE.Float32BufferAttribute(dr, 1));
+  const uniforms = {...U, uReveal: {value: 0}, uAlpha: {value: 0}};
+  const lines = new THREE.LineSegments(g, additive({
+    uniforms,
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uReveal, uAlpha; attribute float aT, aLen, aSeed, aD; attribute vec3 aCol;
+      varying vec3 vC; varying float vA;
+      void main(){
+        float vis = smoothstep(uReveal*32.0, uReveal*32.0 - 2.5, aD);
+        float pulse = smoothstep(0.86, 1.0, fract(aT*aLen*0.22 - uTime*0.5 + aSeed));
+        vC = aCol; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vA = vis * (0.12 + 1.0*pulse) * uAlpha * (1.0 - 0.7*fogF(-mv.z));
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`uniform float uGlobal; varying vec3 vC; varying float vA; void main(){ if (vA < 0.004) discard; gl_FragColor = vec4(pow(vC, vec3(2.2))*vA*uGlobal, 1.0);
+      #include <colorspace_fragment>
+    }`,
+  }));
+  lines.frustumCulled = false;
+  // Partículas que circulan por la red (Bézier evaluada en GPU).
+  const P = 520, p0 = [], p1 = [], p2 = [], sp = [], sd = [], dd = [], pp = [];
+  for (let i = 0; i < P; i++) {
+    const c = curves[Math.floor(R() * curves.length)];
+    p0.push(c.v0.x, c.v0.y, c.v0.z); p1.push(c.v1.x, c.v1.y, c.v1.z); p2.push(c.v2.x, c.v2.y, c.v2.z);
+    pp.push(c.v1.x, c.v1.y, c.v1.z); sp.push(rr(0.05, 0.18) * (R() < 0.5 ? 1 : -1)); sd.push(R()); dd.push(c.v1.distanceTo(rock));
+  }
+  const fg = new THREE.BufferGeometry();
+  fg.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3));
+  fg.setAttribute('aP0', new THREE.Float32BufferAttribute(p0, 3));
+  fg.setAttribute('aP1', new THREE.Float32BufferAttribute(p1, 3));
+  fg.setAttribute('aP2', new THREE.Float32BufferAttribute(p2, 3));
+  fg.setAttribute('aSpeed', new THREE.Float32BufferAttribute(sp, 1));
+  fg.setAttribute('aSeed', new THREE.Float32BufferAttribute(sd, 1));
+  fg.setAttribute('aD', new THREE.Float32BufferAttribute(dd, 1));
+  const flow = new THREE.Points(fg, additive({
+    uniforms,
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uScale, uReveal, uAlpha; attribute vec3 aP0, aP1, aP2; attribute float aSpeed, aSeed, aD;
+      varying vec3 vC; varying float vA;
+      void main(){
+        float t = fract(uTime*aSpeed + aSeed); float it = 1.0 - t;
+        vec3 p = it*it*aP0 + 2.0*it*t*aP1 + t*t*aP2;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        float vis = smoothstep(uReveal*32.0, uReveal*32.0 - 3.0, aD);
+        gl_PointSize = clamp(0.03*uScale*projectionMatrix[1][1]/max(-mv.z,0.05), 0.0, 20.0);
+        gl_Position = projectionMatrix * mv;
+        vC = mix(vec3(0.91,1.0,0.23), vec3(0.25,0.86,1.0), aSeed);
+        vA = vis * uAlpha * (1.0 - 0.6*fogF(-mv.z));
+      }`,
+    fragmentShader: POINT_FRAG,
+  }));
+  flow.frustumCulled = false;
+  return {lines, flow, u: uniforms};
+}
+
+function buildSkyDome(texture) {
+  // Media esfera superior (cénit → 15° sobre el horizonte). La imagen completa se comprime en la cúpula.
+  const geo = new THREE.SphereGeometry(45, 48, 16, 0, Math.PI * 2, 0, Math.PI * 0.42);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, transparent: true, depthWrite: false,
+    uniforms: {uMap: {value: texture}, uAlpha: {value: 0}, uGlobal: U.uGlobal},
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `uniform sampler2D uMap; uniform float uAlpha; uniform float uGlobal; varying vec2 vUv;
+      void main(){ vec3 c = texture2D(uMap, vUv).rgb; float edge = smoothstep(0.0, 0.45, vUv.y);
+        gl_FragColor = vec4(pow(c, vec3(2.2))*uGlobal, uAlpha*edge);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = -10; mesh.frustumCulled = false;
+  return mesh;
+}
+
+/* Escena micro: células = esferas de puntos (alga, lima); hifas = tubos en wireframe (hongo, ámbar)
+ * que crecen, emiten un pulso, tienden un puente de comunicación y se enroscan en las células. */
+function buildSymbiont() {
+  const group = new THREE.Group();          // pivote (rotación del usuario)
+  const algae = new THREE.Group();          // se acerca al hongo durante la unión
+  group.add(algae);
+  const C = new V3(0.12, 0, 0);             // centro final del grupo de algas (local del simbionte)
+  const cells = [];
+  for (let tries = 0; cells.length < 20 && tries < 3000; tries++) {
+    const p = randUnit().multiply(new V3(0.15, 0.11, 0.13)).multiplyScalar(Math.cbrt(R())).add(C);
+    const r = rr(0.03, 0.045);
+    if (cells.every((c) => c.p.distanceTo(p) > c.r + r + 0.004)) cells.push({p, r});
+  }
+  // --- Hifas ---
+  const HB = new Batch(), amber = hex(PAL.amber);
+  const root = new V3(-0.5, -0.03, 0);
+  const tmp = new V3();
+  const walk = (start, target, step, maxSteps, bias, stopR) => {
+    const pts = [start.clone()]; let p = start.clone(); const dir = new V3();
+    for (let i = 0; i < maxSteps; i++) {
+      if (target) dir.subVectors(target, p).normalize().multiplyScalar(bias); else dir.set(0, 0, 0);
+      dir.add(randUnit(tmp).multiplyScalar(1 - bias * 0.6)).normalize();
+      p = p.clone().addScaledVector(dir, step); pts.push(p);
+      if (target && p.distanceTo(target) < stopR) break;
+    }
+    return pts;
+  };
+  const tube = (pts, t0, t1, radius) => {     // tubo en wireframe (3 lados) a lo largo de una curva suave
+    if (pts.length < 2) return;
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const steps = Math.max(4, Math.round(curve.getLength() / 0.012));
+    const fr = curve.computeFrenetFrames(steps, false);
+    const ring = (i) => {
+      const P = curve.getPointAt(i / steps), rad = radius * (1 - 0.5 * i / steps);
+      return [0, 1, 2].map((k) => P.clone().addScaledVector(fr.normals[i], Math.cos(k * 2.094) * rad).addScaledVector(fr.binormals[i], Math.sin(k * 2.094) * rad));
+    };
+    let prev = ring(0);
+    for (let i = 0; i < steps; i++) {
+      const next = ring(i + 1), ta = lerp(t0, t1, i / steps), tb = lerp(t0, t1, (i + 1) / steps);
+      for (let k = 0; k < 3; k++) { HB.seg(prev[k], next[k], ta, tb, 0, 0, R(), amber); HB.seg(prev[k], prev[(k + 1) % 3], ta, ta, 0, 0, R(), amber); }
+      prev = next;
+    }
+  };
+  const polyline = (pts, t0, t1) => { for (let i = 0; i < pts.length - 1; i++) HB.seg(pts[i], pts[i + 1], lerp(t0, t1, i / (pts.length - 1)), lerp(t0, t1, (i + 1) / (pts.length - 1)), 0, 0, R(), amber); };
+  // 1) Crecimiento previo al encuentro (birth 0..0.45): troncos de hifas hacia el espacio entre ambos.
+  const F = new V3(-0.1, 0, 0);
+  const trunkEnds = [];
+  for (let i = 0; i < 5; i++) {
+    const tgt = F.clone().add(new V3(rr(-0.03, 0.03), rr(-0.08, 0.08), rr(-0.08, 0.08)));
+    const pts = walk(root.clone().add(randUnit(tmp).multiplyScalar(0.03)), tgt, 0.03, 30, 0.75, 0.03);
+    tube(pts, 0.0, 0.45, 0.005);
+    trunkEnds.push(pts[pts.length - 1]);
+    for (let k = 0; k < 3; k++) { const s = pts[Math.floor(R() * pts.length)]; polyline(walk(s, null, 0.02, 5, 0, 0), 0.1 + 0.3 * R(), 0.45); }
+  }
+  for (let i = 0; i < 18; i++) polyline(walk(root.clone().add(randUnit(tmp).multiplyScalar(0.04)), null, 0.02, Math.floor(rr(4, 9)), 0, 0), 0.0, 0.35);
+  // 2) Unión (birth 0.5..0.75): continúan hasta cada célula. 3) Envoltura (0.76..0.98): espirales sobre las células.
+  const contacts = [];
+  cells.forEach((cell, ci) => {
+    const from = trunkEnds[ci % trunkEnds.length];
+    const pts = walk(from, cell.p, 0.025, 30, 0.8, cell.r * 1.1);
+    const tc = 0.5 + 0.25 * (pts.length / 12);
+    tube(pts, 0.5, Math.min(0.75, tc), 0.0035);
+    contacts.push(Math.min(0.75, tc));
+    const axis = randUnit(new V3()), [u, w] = basis(axis), turns = rr(1.5, 2.5), n = 22, t0 = 0.76 + 0.12 * (ci / cells.length);
+    let prev = null;
+    for (let j = 0; j <= n; j++) {
+      const s = j / n, h = lerp(-0.85, 0.85, s) * cell.r, rr2 = Math.sqrt(Math.max(0, cell.r * cell.r - h * h)) * 1.15 + 0.002;
+      const ang = s * turns * 6.283;
+      const q = cell.p.clone().addScaledVector(axis, h).addScaledVector(u, Math.cos(ang) * rr2).addScaledVector(w, Math.sin(ang) * rr2);
+      if (prev) HB.seg(prev, q, t0 + 0.08 * (j - 1) / n, t0 + 0.08 * j / n, 0, 0, R(), amber);
+      prev = q;
+    }
+  });
+  const hyphaeMat = additive({
+    uniforms: {...U, uGrow: {value: 0}, uAlpha: {value: 0}, uMerge: {value: 0}, uPulse: {value: -1}},
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uGrow, uAlpha, uMerge, uPulse;
+      attribute float aT, aSeed; attribute vec3 aCol;
+      varying vec3 vC; varying float vA;
+      void main(){
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mv;
+        float vis = step(aT, uGrow);
+        float tip = vis * exp(-(uGrow - aT) * 35.0);
+        float pulse = exp(-pow((aT - uPulse) * 18.0, 2.0)) * step(aT, 0.46);      // pulso de luz del hongo
+        float flow = pow(0.5 + 0.5*sin(aT*90.0 - uTime*3.0), 10.0);              // savia que recorre las hifas
+        vC = mix(aCol, vec3(0.77,1.0,0.9), uMerge) * (1.0 + pulse*2.5);
+        vA = vis * (0.35 + 0.4*flow + tip*1.5 + pulse*1.8) * uAlpha * (1.0 - fogF(-mv.z));
+      }`,
+    fragmentShader: LINE_FS,
+  });
+  const hyphae = new THREE.LineSegments(HB.geometry(), hyphaeMat); hyphae.frustumCulled = false;
+  group.add(hyphae);
+
+  // --- Células (esferas de puntos de superficie + cloroplastos internos) ---
+  const pos = [], cen = [], cont = [], seed = [], kind = [];
+  cells.forEach((c, i) => {
+    const N = 64;
+    for (let k = 0; k < N; k++) {          // muestreo de Fibonacci en la esfera
+      const y = 1 - 2 * (k + 0.5) / N, rad = Math.sqrt(1 - y * y), th = k * 2.39996;
+      pos.push(c.p.x + Math.cos(th) * rad * c.r, c.p.y + y * c.r, c.p.z + Math.sin(th) * rad * c.r);
+      cen.push(c.p.x, c.p.y, c.p.z); cont.push(contacts[i]); seed.push(R()); kind.push(0);
+    }
+    for (let k = 0; k < 9; k++) {
+      const q = randUnit().multiplyScalar(c.r * 0.55 * Math.cbrt(R())).add(c.p);
+      pos.push(q.x, q.y, q.z); cen.push(c.p.x, c.p.y, c.p.z); cont.push(contacts[i]); seed.push(R()); kind.push(1);
+    }
+  });
+  const cg = new THREE.BufferGeometry();
+  cg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  cg.setAttribute('aCenter', new THREE.Float32BufferAttribute(cen, 3));
+  cg.setAttribute('aContact', new THREE.Float32BufferAttribute(cont, 1));
+  cg.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  cg.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
+  const cellMat = additive({
+    uniforms: {...U, uIn: {value: 0}, uGrow: hyphaeMat.uniforms.uGrow, uAlpha: hyphaeMat.uniforms.uAlpha, uMerge: hyphaeMat.uniforms.uMerge, uFlash: {value: 0}},
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uScale, uIn, uGrow, uAlpha, uMerge, uFlash;
+      attribute vec3 aCenter; attribute float aContact, aSeed, aKind;
+      varying vec3 vC; varying float vA;
+      void main(){
+        float breath = (0.93 + 0.07*sin(uTime*1.6 + aCenter.x*40.0)) * uIn;
+        vec3 p = aCenter + (position - aCenter) * breath;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        float contact = uGrow > aContact ? exp(-(uGrow - aContact) * 16.0) : 0.0;
+        float photo = 0.6 + 0.4*sin(uTime*2.5 + aCenter.y*50.0 + aSeed);
+        gl_PointSize = clamp((aKind > 0.5 ? 0.013 : 0.008) * uScale * projectionMatrix[1][1] / max(-mv.z, 0.05), 1.0, 18.0);
+        vec3 base = aKind > 0.5 ? vec3(0.9,1.0,0.45) : vec3(0.7,1.0,0.3);
+        vC = mix(base, vec3(0.77,1.0,0.9), uMerge);
+        vA = (0.75*photo + contact*1.5 + uFlash*1.2) * uAlpha * uIn * (1.0 - fogF(-mv.z));
+      }`,
+    fragmentShader: POINT_FRAG,
+  });
+  const cellPts = new THREE.Points(cg, cellMat); cellPts.frustumCulled = false;
+  algae.add(cellPts);
+
+  // --- Puente de comunicación: hilo luminoso entre el frente del hongo y las algas (antes de unirse) ---
+  const BR = new Batch();
+  const a0 = F.clone(), a1 = C.clone().add(new V3(0.32 - 0.13, 0, 0));      // borde del grupo de algas en su posición inicial
+  const n = 40;
+  let prev = a0;
+  for (let i = 1; i <= n; i++) {
+    const s = i / n;
+    const q = a0.clone().lerp(a1, s).add(new V3(0, Math.sin(s * Math.PI) * 0.04 + Math.sin(s * 19) * 0.004, Math.sin(s * 13) * 0.004));
+    BR.seg(prev, q, (i - 1) / n, s, 0, 0, 0, hex(PAL.amber).lerp(hex(PAL.lime), s));
+    prev = q;
+  }
+  const bridgeMat = additive({
+    uniforms: {...U, uBridge: {value: 0}, uAlpha: {value: 0}},
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uBridge, uAlpha; attribute float aT; attribute vec3 aCol;
+      varying vec3 vC; varying float vA;
+      void main(){
+        vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv;
+        float rev = step(aT, uBridge);
+        float msg = exp(-pow((aT - fract(uTime*0.7)) * 10.0, 2.0)) + exp(-pow((aT - (1.0 - fract(uTime*0.55 + 0.3))) * 10.0, 2.0));
+        vC = aCol; vA = rev * (0.45 + 2.0*msg) * uAlpha;
+      }`,
+    fragmentShader: LINE_FS,
+  });
+  const bridge = new THREE.LineSegments(BR.geometry(), bridgeMat); bridge.frustumCulled = false;
+  group.add(bridge);
+
+  return {group, algae, hyphae, cellPts, bridge, u: hyphaeMat.uniforms, uIn: cellMat.uniforms.uIn, uFlash: cellMat.uniforms.uFlash, ub: bridgeMat.uniforms};
+}
+
+/* Fauna en dibujo de líneas (wireframe de formas simples, con color por parte). */
+function buildFauna() {
+  const toBatch = (B, geo, color, pos, rot = [0, 0, 0], scale = [1, 1, 1]) => {
+    const g = geo.clone(); g.scale(...scale); g.rotateX(rot[0]); g.rotateY(rot[1]); g.rotateZ(rot[2]); g.translate(...pos);
+    const w = new THREE.WireframeGeometry(g).attributes.position, col = hex(color);
+    for (let i = 0; i < w.count; i += 2) B.seg(new V3().fromBufferAttribute(w, i), new V3().fromBufferAttribute(w, i + 1), 0, 0, 0, 0, R(), col);
+  };
+  const S = new THREE.SphereGeometry(1, 8, 6), Cy = new THREE.CylinderGeometry(1, 1, 1, 4, 1), Co = new THREE.ConeGeometry(1, 1, 5), Bx = new THREE.BoxGeometry(1, 1, 1);
+  const make = (build, p, scale) => {
+    const B = new Batch(); build(B);
+    const m = B.lines(lineMaterial(0xffffff, 0.85)); m.position.copy(p);
+    m.rotation.y = Math.atan2(-p.x, -p.z); m.userData.baseScale = scale; m.scale.setScalar(0.0001);
+    return m;
+  };
+  // Chucao: ave redonda, pecho rufo (naranja), cola levantada.
+  const chucao = make((B) => {
+    toBatch(B, S, 0x8a6a4a, [0, 0.13, 0], [0, 0, 0], [0.09, 0.08, 0.11]);
+    toBatch(B, S, PAL.orange, [0, 0.11, 0.05], [0, 0, 0], [0.07, 0.065, 0.06]);
+    toBatch(B, S, 0x8a6a4a, [0, 0.21, 0.07], [0, 0, 0], [0.052, 0.05, 0.052]);
+    toBatch(B, Co, 0xd9c9a8, [0, 0.21, 0.13], [Math.PI / 2, 0, 0], [0.012, 0.04, 0.012]);
+    toBatch(B, Bx, 0x8a6a4a, [0, 0.2, -0.1], [-0.9, 0, 0], [0.05, 0.13, 0.025]);
+    toBatch(B, Cy, 0xd9c9a8, [0.03, 0.03, 0], [0, 0, 0], [0.006, 0.07, 0.006]);
+    toBatch(B, Cy, 0xd9c9a8, [-0.03, 0.03, 0], [0, 0, 0], [0.006, 0.07, 0.006]);
+  }, FAUNA_POS.chucao, 2.0);
+  // Ciervo volante: mandíbulas largas y curvas.
+  const ciervo = make((B) => {
+    const T = new THREE.TorusGeometry(0.07, 0.006, 3, 10, 2.0);
+    toBatch(B, S, PAL.amber, [0, 0.04, -0.04], [0, 0, 0], [0.045, 0.025, 0.07]);
+    toBatch(B, S, PAL.amber, [0, 0.045, 0.04], [0, 0, 0], [0.035, 0.022, 0.03]);
+    toBatch(B, T, PAL.orange, [0.01, 0.06, 0.08], [Math.PI / 2, 0.2, Math.PI / 2]);
+    toBatch(B, T, PAL.orange, [-0.01, 0.06, 0.08], [Math.PI / 2, -0.2, Math.PI / 2], [1, -1, 1]);
+    for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) toBatch(B, Cy, PAL.amber, [sx * 0.05, 0.02, -0.03 + i * 0.03], [0, 0, sx * 1.1], [0.003, 0.09, 0.003]);
+  }, FAUNA_POS.ciervo, 2.2);
+  // Ranita de Darwin: pequeña, lima, hocico puntiagudo.
+  const ranita = make((B) => {
+    toBatch(B, S, PAL.lime, [0, 0.03, 0], [0, 0, 0], [0.035, 0.024, 0.045]);
+    toBatch(B, Co, PAL.lime, [0, 0.035, 0.055], [Math.PI / 2, 0, 0], [0.018, 0.035, 0.014]);
+    toBatch(B, S, PAL.mint, [0.017, 0.05, 0.03], [0, 0, 0], [0.009, 0.009, 0.009]);
+    toBatch(B, S, PAL.mint, [-0.017, 0.05, 0.03], [0, 0, 0], [0.009, 0.009, 0.009]);
+    toBatch(B, S, PAL.lime, [0.03, 0.015, -0.025], [0, 0, 0], [0.012, 0.012, 0.03]);
+    toBatch(B, S, PAL.lime, [-0.03, 0.015, -0.025], [0, 0, 0], [0.012, 0.012, 0.03]);
+  }, FAUNA_POS.ranita, 2.6);
+  return {chucao, ciervo, ranita};
+}
+
+/* Lluvia: trazos verticales tenues que caen (posición calculada en GPU); aparece progresivamente. */
+function buildRain(count = 1400) {
+  const pos = [], seed = [], end = [];
+  for (let i = 0; i < count; i++) {
+    const a = R() * 6.283, r = 0.6 + 17 * Math.sqrt(R()), x = Math.sin(a) * r, z = Math.cos(a) * r, y = R() * 14, s = R();
+    for (const e of [0, 1]) { pos.push(x, y, z); seed.push(s); end.push(e); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  g.setAttribute('aEnd', new THREE.Float32BufferAttribute(end, 1));
+  const mat = additive({
+    uniforms: {...U, uRain: {value: 0}, uAlpha: {value: 0.55}},
+    vertexShader: /* glsl */`
+      ${GLSL_COMMON}
+      uniform float uRain, uAlpha; attribute float aSeed, aEnd;
+      varying vec3 vC; varying float vA;
+      void main(){
+        float speed = 5.0 + 3.0*aSeed;
+        float y = mod(position.y - uTime*speed, 14.0) - aEnd*(0.3 + 0.15*aSeed);
+        vec4 mv = modelViewMatrix * vec4(position.x, y, position.z, 1.0);
+        gl_Position = projectionMatrix * mv;
+        vC = vec3(0.7, 0.92, 1.0);
+        vA = step(aSeed, uRain) * uAlpha * (1.0 - aEnd*0.8) * (1.0 - fogF(-mv.z));
+      }`,
+    fragmentShader: LINE_FS,
+  });
+  const o = new THREE.LineSegments(g, mat); o.frustumCulled = false;
+  return o;
+}
+
+/* =====================================================================
+ * 6. SCRIPT PRINCIPAL (XR Blocks): estados, navegación, interacción
+ * ===================================================================== */
+const FOREST_FAMS = ['struct', 'barbs', 'ferns', 'herbs', 'flowers', 'flowerPts', 'moss', 'dust'];
+// Orden del "tiempo geológico" (escena 4): [inicio, fin] de cada familia sobre uGeo 0..1.
+const GEO_RANGE = {moss: [0.0, 0.35], herbs: [0.0, 0.4], flowers: [0.08, 0.48], flowerPts: [0.08, 0.48], ferns: [0.3, 0.7], struct: [0.5, 1.0], barbs: [0.72, 1.0]};
+
+class Liquen extends xb.Script {
+  init() {
+    this.running = false;
+    this.cur = -1; this.t = 0;
+    this.last = performance.now() / 1000;
+    this.navLock = 0; this.quality = 0; this.slowTime = 0; this.dtAvg = 1 / 72;
+    this.padPrev = new Map();
+    this.camPos = new V3(); this.camQuat = new THREE.Quaternion(); this.fwd = new V3();
+    this.tmpRay = new THREE.Ray();
+    this.eyeY = 1.5;
+    const ctx = xb.core.sound?.getAudioListener?.()?.context || THREE.AudioContext.getContext();
+    this.audio = new AudioManager(ctx);
+
+    // --- Fondo negro opaco ---
+    // En la web, el simulador de XR Blocks dibuja una sala detrás de la escena; esta esfera negra
+    // (dibujada primero, sin escribir profundidad) la tapa. En el visor es invisible: negro sobre negro.
+    this.backdrop = noPointer(new THREE.Mesh(new THREE.SphereGeometry(300, 16, 8),
+      new THREE.MeshBasicMaterial({color: 0x000000, side: THREE.BackSide, depthWrite: false, fog: false})));
+    this.backdrop.renderOrder = -100; this.backdrop.frustumCulled = false; this.add(this.backdrop);
+
+    // --- Mundo (no interactivo) ---
+    this.world = new THREE.Group(); this.add(this.world);
+    this.decor = noPointer(new THREE.Group()); this.world.add(this.decor);
+    const forest = buildForest();
+    this.fam = forest.fam;
+    this.baseAlpha = {};
+    for (const k of FOREST_FAMS) { this.decor.add(this.fam[k]); this.baseAlpha[k] = this.fam[k].material.uniforms.uAlpha.value; }
+    this.lichen = buildLichenPoints(forest.lichenArr); this.decor.add(this.lichen);
+    this.lu = this.lichen.material.uniforms;
+
+    // Volúmenes de selección del liquen (invisibles, pero detectables por el rayo).
+    this.lichenProxies = new THREE.Group(); this.world.add(this.lichenProxies);
+    const proxyMat = new THREE.MeshBasicMaterial({visible: false, side: THREE.DoubleSide});
+    forest.lichenCenters.forEach((c, i) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), proxyMat);
+      m.position.copy(c); m.userData.action = 'lichen'; m.userData.index = i; this.lichenProxies.add(m);
+    });
+    this.lichenCenters = forest.lichenCenters;
+
+    this.sym = buildSymbiont();
+    this.symRoot = new THREE.Group(); this.world.add(this.symRoot);
+    this.symRoot.add(this.sym.group); noPointer(this.sym.group);
+    this.cellProxy = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), proxyMat);
+    this.cellProxy.userData.action = 'cell'; this.symRoot.add(this.cellProxy);
+
+    this.rock = buildRock(); noPointer(this.rock.group); this.decor.add(this.rock.group);
+    this.groundCol = buildGroundColonies(); this.decor.add(this.groundCol);
+    this.lichenBody = buildLichenBody(); this.lichenBody.position.copy(ROCK_TOP); this.decor.add(this.lichenBody);
+    this.spores = buildSpores(); this.decor.add(this.spores);
+    this.fauna = buildFauna(); Object.values(this.fauna).forEach((m) => this.decor.add(m));
+    this.rain = buildRain(); this.decor.add(this.rain);
+
+    // Nodos de la red: troncos, roca, suelo, líquenes y fauna.
+    const nodes = [];
+    for (const b of forest.trunkBases) if (Math.hypot(b.x, b.z) < 16) { nodes.push(new V3(b.x, 0.1, b.z)); if (R() < 0.5) nodes.push(new V3(b.x, rr(2, 6), b.z)); }
+    const rockIdx = nodes.length; nodes.push(ROCK_TOP.clone());
+    for (let i = 0; i < 14; i++) { const a = R() * 6.28, r = rr(2, 12); nodes.push(new V3(Math.sin(a) * r, 0.03, -Math.cos(a) * r)); }
+    forest.lichenCenters.forEach((c) => nodes.push(c.clone()));
+    Object.values(FAUNA_POS).forEach((f) => nodes.push(f.clone().setY(f.y + 0.15)));
+    this.net = buildNetwork(nodes, rockIdx);
+    this.decor.add(this.net.lines, this.net.flow);
+
+    this.sky = null;   // se añade cuando la textura carga
+
+    // --- HUD discreto: monoespaciada, mayúsculas, gris tenue (sigue la mirada con retardo) ---
+    this.hud = noPointer(new THREE.Group()); this.add(this.hud);
+    this.hudYaw = 0;
+    this.nav = new THREE.Group(); this.add(this.nav);
+    const navMat = () => new THREE.MeshBasicMaterial({color: 0x8b9490, transparent: true, opacity: 0.45, depthTest: false, depthWrite: false, fog: false, blending: THREE.AdditiveBlending});
+    const arrowGeo = new THREE.ConeGeometry(0.012, 0.028, 3);
+    this.navBtns = {};
+    for (const [action, x, rz] of [['prev', -0.105, Math.PI / 2], ['next', 0.105, -Math.PI / 2]]) {
+      const g = new THREE.Group(); g.position.set(x, -0.42, -0.8);
+      const icon = noPointer(new THREE.Mesh(arrowGeo, navMat())); icon.rotation.z = rz; icon.renderOrder = 1001; g.add(icon);
+      const hit = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), proxyMat); hit.userData.action = action; g.add(hit);
+      this.nav.add(g); this.navBtns[action] = {g, icon};
+    }
+    this.numLabel = makeLabel('1/5', {w: 256, h: 96, width: 0.1, size: 52, color: '#8b9490', weight: 400, spacing: 3});
+    this.numLabel.position.set(0, -0.42, -0.8); this.nav.add(this.numLabel);
+    this.nav.children.forEach((c) => (c.rotation.x = -0.48));
+
+    // Línea de tiempo (solo en el estado 4), en la parte superior de la visión.
+    this.timeline = new THREE.Group(); this.timeline.position.set(0, 0.36, -1.15); this.timeline.rotation.x = 0.3; this.hud.add(this.timeline);
+    const flat = (color) => new THREE.MeshBasicMaterial({color, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false});
+    const tlLine = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.0016), flat(0x8b9490)); tlLine.renderOrder = 1000; this.timeline.add(tlLine);
+    this.tlFill = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.0024), flat(0xb9c2be)); this.tlFill.renderOrder = 1001; this.timeline.add(this.tlFill);
+    this.tlMarker = new THREE.Mesh(new THREE.CircleGeometry(0.005, 16), flat(0xd6dcd9)); this.tlMarker.renderOrder = 1002; this.timeline.add(this.tlMarker);
+    const hudLbl = (txt, color = '#8b9490') => makeLabel(txt, {width: 0.13, w: 256, h: 64, size: 26, color, weight: 400, spacing: 4});
+    const lblL = hudLbl('400 MA'); lblL.position.set(-0.3, -0.02, 0);
+    const lblR = hudLbl('HOY'); lblR.position.set(0.3, -0.02, 0);
+    this.tlNow = hudLbl('400 MA', '#c9d2ce'); this.tlNow.position.set(-0.3, 0.022, 0);
+    this.timeline.add(lblL, lblR, this.tlNow);
+    this.tlMats = [tlLine.material, this.tlFill.material, this.tlMarker.material, lblL.material, lblR.material, this.tlNow.material];
+    this.tlAlpha = {value: 0}; this.tlLabelClock = 0;
+    this.applyTimelineAlpha(0);
+
+    // Indicación contextual (estado 3): serif itálica, crema, minúsculas, con brillo.
+    this.hint = makeLabel('usa el mando para explorar la estructura celular.', {w: 1024, h: 96, width: 0.62, size: 38, color: '#f3e8cf',
+      family: FONT_POEM, style: 'italic', weight: 400, glow: 12});
+    this.hint.material.opacity = 0; this.add(this.hint);
+    this.s1Text = makeLabel('selecciona un líquen con el gatillo', {w: 1024, h: 96, width: 0.75, size: 40, color: '#f3e8cf',
+      family: FONT_POEM, style: 'italic', weight: 400, glow: 12});
+    this.s1Text.material.opacity = 0; this.s1Text.visible = false; this.add(this.s1Text);
+    this.s1TextAlpha = {value: 0};
+    this.zoom = 1; this.zoomT = 1; this.stickY = 0;
+    this.hintAlpha = {value: 0};
+
+    this.manip = null;
+    this.symRot = {yaw: 0, pitch: 0, tYaw: 0, tPitch: 0};
+    this.selectedLichen = -1; this.selectTime = -1;
+    this.fromState = -1;
+    this.states = this.buildStates();
+    this.setAllHidden();
+  }
+
+  /* ---------- carga de recursos (no bloqueante) ---------- */
+  async preload() {
+    const skyPromise = new Promise((resolve) => {
+      new THREE.TextureLoader().load(direct(CONFIG.skyImage), (tex) => resolve(tex), undefined, (e) => { console.warn('[LIQUEN] Cielo no disponible', e); resolve(null); });
+    });
+    const [tex] = await Promise.all([skyPromise, this.audio.preload()]);
+    if (tex) {
+      tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
+      this.sky = noPointer(buildSkyDome(tex)); this.sky.visible = false; this.world.add(this.sky);
+    }
+  }
+
+  setAllHidden() { for (const o of [this.world, this.nav, this.hud, this.hint]) o.visible = false; }
+
+  /* ---------- comienzo / pausa ---------- */
+  begin() {
+    if (this.running) return;
+    this.running = true;
+    for (const o of [this.world, this.nav, this.hud]) o.visible = true;
+    // Diagnóstico: ?hud=0 oculta flechas y número (se sigue navegando con A/B y el joystick).
+    if (new URLSearchParams(location.search).get('hud') === '0') this.nav.visible = this.hud.visible = false;
+    this.readCamera(); this.recenter();
+    this.pendingRecenter = 3;   // la pose de la cabeza llega en los primeros fotogramas XR
+    this.goTo(0);
+    this.audio.mix(0.9, 0, 3);
+  }
+  stop() { this.running = false; this.endManip(); this.audio.stopNarr(); this.audio.mix(0, 0, 1); this.setAllHidden(); }
+
+  readCamera() {
+    const cam = xb.core.camera;
+    cam.getWorldPosition(this.camPos); cam.getWorldQuaternion(this.camQuat);
+    this.fwd.set(0, 0, -1).applyQuaternion(this.camQuat);
+  }
+  camYaw() { return Math.atan2(-this.fwd.x, -this.fwd.z); }
+  recenter() {   // reorienta el mundo frente al usuario (solo cuando el bosque no es visible)
+    this.world.position.set(this.camPos.x, 0, this.camPos.z);
+    this.world.rotation.y = this.camYaw();
+    this.eyeY = THREE.MathUtils.clamp(this.camPos.y, 1.0, 1.9);
+    this.hudYaw = this.camYaw();
+  }
+
+  /* ---------- máquina de estados (cada cambio: fundido a negro breve, sin esperar) ---------- */
+  goTo(i) {
+    const n = this.states.length;
+    i = ((i % n) + n) % n;
+    if (this.cur >= 0) this.states[this.cur].exit?.();
+    this.fromState = this.cur;
+    this.cur = i; this.t = 0;
+    this.states[i].enter(this.fromState);
+    this.numLabel.setText(`${i + 1}/${n}`);
+    U.uGlobal.value = 0;
+  }
+  navigate(delta) {
+    const now = performance.now() / 1000;   // tiempo real (independiente de los fps)
+    if (!this.running || now < this.navLock) return;
+    this.navLock = now + CONFIG.navCooldown;
+    this.goTo(this.cur + delta);
+  }
+
+  /* ---------- utilidades de capas ---------- */
+  famU(k) { return this.fam[k].material.uniforms; }
+  setForest(visible, grow = null) {
+    for (const k of FOREST_FAMS) { this.fam[k].visible = visible && !(k === 'ferns' && this.quality >= 2); if (grow !== null) this.famU(k).uGrow.value = grow; }
+  }
+  // Escena 1: el bosque (estructura, sotobosque, flores, musgo, polvo) se apaga y desatura
+  // para dar protagonismo a las barbas y a los líquenes, que conservan su brillo.
+  forestDim(x) {
+    for (const k of FOREST_FAMS) {
+      const muted = this.muted && k !== 'barbs';
+      this.famU(k).uAlpha.value = this.baseAlpha[k] * x * (muted ? 0.32 : 1);
+      this.famU(k).uDesat.value = muted ? 0.8 : 0;
+    }
+  }
+  setRockAlpha(x) {
+    this.rock.lines.material.uniforms.uAlpha.value = 0.55 * x; this.rock.verts.material.uniforms.uAlpha.value = 0.8 * x;
+    this.rock.colonies.material.uniforms.uAlpha.value = x; this.groundCol.material.uniforms.uAlpha.value = 0.9 * x;
+  }
+  setLichenBodyAlpha(x) { this.lichenBody.children.forEach((c, i) => (c.material.uniforms.uAlpha.value = (i === 0 ? 1 : 0.6) * x)); }
+  setFaunaScale(f) { for (const m of Object.values(this.fauna)) m.scale.setScalar(Math.max(0.0001, f * m.userData.baseScale)); }
+  hideAllLayers() {
+    this.setForest(false);
+    for (const o of [this.lichen, this.lichenProxies, this.symRoot, this.rock.group, this.groundCol, this.lichenBody, this.spores, this.net.lines, this.net.flow, this.rain]) o.visible = false;
+    if (this.sky) this.sky.visible = false;
+    Object.values(this.fauna).forEach((m) => (m.visible = false));
+    this.cellProxy.visible = false;
+  }
+
+  buildStates() {
+    const A = this.audio, S = this.sym;
+    const fogTo = (fog, dt, rate = 1.5) => approach(U.uFogDensity, fog[1], rate, dt);
+    // La escala incluye el zoom del usuario (joystick arriba/abajo en las escenas micro).
+    const placeSym = (z, scale) => { this.symRoot.position.set(0, this.eyeY - 0.1, z); this.sym.group.scale.setScalar(scale * this.zoom); };
+
+    /* ESTADO 1 — BOSQUE PRESENTE */
+    const s1 = {
+      enter: () => {
+        this.hideAllLayers();
+        this.muted = true;
+        this.setForest(true, 1); this.forestDim(1);
+        this.rain.visible = true; this.rain.material.uniforms.uRain.value = 0; this.rain.material.uniforms.uAlpha.value = 0.45;
+        this.lichen.visible = true; this.lichenProxies.visible = false;
+        this.lu.uReveal.value = 0; this.lu.uSelAmt.value = 0; this.lu.uSel.value = -1; this.lu.uAlpha.value = 1;
+        this.selectedLichen = -1; this.selectTime = -1; this.voice1 = {start: -1, end: -1};
+        A.synth.setMode('none'); A.mix(0.9, 0, 3);
+      },
+      update: (t, dt) => {
+        // Voz "soy un líquen, este es mi hogar…": se reintenta hasta que el audio esté cargado (máx. 8 s).
+        const v = this.voice1;
+        if (v.start < 0 && t >= 0.5 && t < 8 && A.playNarr(N.a00)) {
+          v.start = t; v.end = t + A.buffers[N.a00].duration;
+          A.mix(0.45, 0, 2);                       // baja el ambiente para que la voz se entienda
+        }
+        if (v.start >= 0 && t >= v.end && !v.done) { v.done = true; A.mix(0.9, 0, 3); }
+        // Lluvia desde el inicio (aparece en ~4 s).
+        this.rain.material.uniforms.uRain.value = 0.85 * smooth(0, 4, t);
+        // Barbas colgantes y manchas de liquen aparecen entre los 4,5 y 18,5 s.
+        this.famU('barbs').uGrow.value = smooth(4.5, 18.5, t);
+        this.lu.uReveal.value = smooth(4.5, 18.5, t);
+        // Al terminar la voz (o a los 29,5 s si no cargó) se pueden activar y aparece la indicación.
+        const vEnd = v.start >= 0 ? v.end : 29.5;
+        const selectable = t > vEnd && this.selectedLichen < 0;
+        this.lu.uSelectable.value = selectable ? 1 : 0;
+        this.lichenProxies.visible = selectable;
+        approach(this.s1TextAlpha, selectable ? 1 : 0, 3, dt);
+        this.s1Text.visible = this.s1TextAlpha.value > 0.01;
+        this.s1Text.material.opacity = this.s1TextAlpha.value * 0.9;
+        if (this.s1Text.visible) {
+          this.s1Text.position.copy(this.camPos).addScaledVector(new V3(this.fwd.x, 0, this.fwd.z).normalize(), 1.3).setY(this.camPos.y - 0.25);
+          this.s1Text.lookAt(this.camPos);
+        }
+        // Si nadie selecciona un liquen, se elige solo a los 44,5 s.
+        if (this.selectedLichen < 0 && t >= Math.min(vEnd + 15, CONFIG.s1AutoMax)) this.selectLichen(this.frontLichen());
+        if (this.selectedLichen >= 0) {
+          const k = clamp01((t - this.selectTime) / 3);
+          this.lu.uSelAmt.value = smooth(0, 1, k);
+          this.forestDim(lerp(1, 0.04, smooth(0, 1, k)));
+          fogTo(STATE_FOG.dive, dt, 2);
+          if (k >= 1) this.goTo(1);
+        } else fogTo(STATE_FOG.forest, dt);
+      },
+      exit: () => { this.muted = false; this.lichenProxies.visible = false; this.lu.uSelectable.value = 0; this.s1Text.visible = false; this.s1TextAlpha.value = 0; this.famU('barbs').uGrow.value = 1; },
+      auto: false,
+    };
+
+    /* ESTADO 2 — ENCUENTRO: crecen → pulso de luz → puente de comunicación → unión → un solo organismo */
+    const s2 = {
+      enter: () => {
+        this.readCamera(); this.recenter();
+        this.hideAllLayers();
+        this.zoom = this.zoomT = 1;
+        this.symRoot.visible = true; placeSym(-1.3, 1.15);
+        this.symRot = {yaw: 0, pitch: 0, tYaw: 0, tPitch: 0};
+        S.algae.scale.setScalar(1);
+        A.mix(0, 0.75); A.synth.setMode('encounter');
+        A.playNarr(N.a02);
+      },
+      update: (t, dt) => {
+        fogTo(STATE_FOG.abstract, dt, 3);
+        S.u.uAlpha.value = smooth(0, 2, t);
+        S.uIn.value = smooth(0.5, 4, t);
+        // Crecimiento por separado (1–9 s).
+        S.u.uGrow.value = t < 16.5 ? 0.45 * smooth(1, 9, t) : lerp(0.5, 1.0, smooth(16.5, 24, t));
+        // Pulso de luz: primero el hongo (9–10.5 s), luego el alga (10.5–12 s).
+        S.u.uPulse.value = t > 9 && t < 10.6 ? (t - 9) / 1.5 * 0.46 : -1;
+        S.uFlash.value = t > 10.5 && t < 12.5 ? Math.sin((t - 10.5) / 2 * Math.PI) : 0;
+        // Puente de comunicación (12–15.5 s) que se apaga durante la unión (16–19 s).
+        S.ub.uBridge.value = smooth(12, 15.5, t);
+        S.ub.uAlpha.value = smooth(12, 12.5, t) * (1 - smooth(16, 19, t));
+        // Unión: el alga se acerca y el grupo se compacta hasta parecer un solo cuerpo.
+        const k = smooth(16, 20, t);
+        S.algae.position.set(lerp(0.32, 0, k), 0.03 * Math.sin(t * 0.6) * (1 - k), 0);
+        S.algae.scale.setScalar(lerp(1, 0.85, smooth(18, 24, t)));
+        S.u.uMerge.value = smooth(20, 26, t) * 0.7;
+        this.sym.group.rotation.set(0, 0.2 * Math.sin(t * 0.12) + 0.04 * Math.max(0, t - 20), 0);
+        this.sym.group.scale.setScalar(1.15 * this.zoom);
+      },
+      auto: true,
+    };
+
+    /* ESTADO 3 — INTIMIDAD CELULAR */
+    const s3 = {
+      enter: (from) => {
+        if (from !== 1) { this.readCamera(); this.recenter(); }
+        this.hideAllLayers();
+        this.symRoot.visible = true;
+        S.u.uGrow.value = 1; S.u.uPulse.value = -1; S.ub.uAlpha.value = 0; S.uFlash.value = 0;
+        S.u.uAlpha.value = Math.max(S.u.uAlpha.value, 0.3); S.uIn.value = Math.max(S.uIn.value, 0.5);
+        S.algae.position.set(0, 0, 0); S.algae.scale.setScalar(0.85);
+        if (from !== 1) this.zoom = this.zoomT = 1;
+        this.symScale0 = from === 1 ? this.sym.group.scale.x / this.zoom : 1.15; this.symZ0 = from === 1 ? this.symRoot.position.z : -1.3;
+        this.symRot.tYaw = this.symRot.yaw = this.sym.group.rotation.y; this.symRot.tPitch = this.symRot.pitch = 0;
+        this.cellProxy.visible = true;
+        this.hintDone = false;
+        A.mix(0, 0.75); A.synth.setMode('cellular');
+        A.playNarr(N.a03);   // no se reinicia si aún suena
+      },
+      update: (t, dt) => {
+        fogTo(STATE_FOG.abstract, dt, 3);
+        approach(S.u.uAlpha, 1, 2, dt); approach(S.uIn, 1, 2, dt);
+        S.u.uMerge.value = lerp(S.u.uMerge.value, 0.55, 1 - Math.exp(-dt));
+        const k = smooth(0, 2.5, t), scale = lerp(this.symScale0, 1.8, k);
+        placeSym(lerp(this.symZ0, -1.2, k), scale);
+        this.cellProxy.scale.setScalar(scale * this.zoom);
+        if (!this.manip) this.symRot.tYaw += dt * 0.06;
+        this.symRot.yaw = lerp(this.symRot.yaw, this.symRot.tYaw, 1 - Math.exp(-8 * dt));
+        this.symRot.pitch = lerp(this.symRot.pitch, this.symRot.tPitch, 1 - Math.exp(-8 * dt));
+        this.sym.group.rotation.set(this.symRot.pitch, this.symRot.yaw, 0, 'YXZ');
+        const want = t > 1 && t < 9 && !this.hintDone ? 1 : 0;
+        approach(this.hintAlpha, want, 4, dt);
+        this.hint.visible = this.hintAlpha.value > 0.01;
+        this.hint.material.opacity = this.hintAlpha.value * 0.9;
+        if (this.hint.visible) {
+          this.hint.position.set(0, this.eyeY - 0.55, -0.95).applyMatrix4(this.world.matrixWorld);
+          this.hint.lookAt(this.camPos);
+        }
+      },
+      exit: () => { this.endManip(); this.cellProxy.visible = false; this.hint.visible = false; this.hintAlpha.value = 0; },
+      auto: true,
+    };
+
+    /* ESTADO 4 — ROCA MADRE Y CRECIMIENTO
+     * 0–12 s  liquen desciende; colonias se extienden en la roca y luego en el suelo
+     * 12–22 s gatillo (o automático a los 16 s): "sopla fuerte" → ~1 s → esporas
+     * →40 s   tiempo geológico: hierbas pioneras y flores → helechos → árboles y liquen colgante
+     * 40–50 s fauna */
+    const s4 = {
+      enter: (from) => {
+        this.readCamera(); this.recenter();
+        this.hideAllLayers();
+        this.symRoot.visible = from === 2;
+        this.setForest(false, 0); this.forestDim(1);
+        this.fam.dust.visible = true; this.famU('dust').uGrow.value = 1;   // el polvo mineral siempre está
+        this.lichen.visible = false;
+        this.rock.group.visible = true; this.groundCol.visible = true; this.lichenBody.visible = true; this.spores.visible = true;
+        Object.values(this.fauna).forEach((m) => (m.visible = true)); this.setFaunaScale(0);
+        this.rock.colonies.material.uniforms.uGrow.value = 0; this.groundCol.material.uniforms.uGrow.value = 0;
+        this.setRockAlpha(0); this.setLichenBodyAlpha(0);
+        const su = this.spores.material.uniforms; su.uDisp.value = 0; su.uAlpha.value = 0; su.uBreath.value = 0;
+        this.spore = {at: -1};
+        this.flags4 = {};
+        A.mix(0, 0.75); A.synth.setMode('rock');
+        A.playNarr(N.a04);
+        this.tlAlpha.value = 0;
+      },
+      update: (t, dt) => {
+        fogTo(t < 22 ? STATE_FOG.rock : STATE_FOG.grown, dt, 1);
+        if (this.symRoot.visible) {   // el simbionte se aleja de la escala celular y se vuelve el talo completo
+          const k = smooth(0, 3, t);
+          this.symRoot.position.set(lerp(0, ROCK_TOP.x, k), lerp(this.eyeY - 0.1, 1.9, k), lerp(-1.2, ROCK_TOP.z, k));
+          this.sym.group.scale.setScalar(lerp(1.8, 0.2, k));
+          S.u.uAlpha.value = 1 - k;
+          if (k >= 1) this.symRoot.visible = false;
+        }
+        // Roca y descenso del liquen; reacción de luz al contacto (4.5 s).
+        const flash = t > 4.5 ? Math.exp(-(t - 4.5) * 1.8) : 0;
+        this.setRockAlpha(smooth(0, 2.5, t) * (1 + flash * 1.5));
+        this.setLichenBodyAlpha(smooth(1.5, 3, t));
+        this.lichenBody.position.set(ROCK_TOP.x, lerp(1.9, ROCK_TOP.y, smooth(2, 4.5, t)), ROCK_TOP.z);
+        this.lichenBody.rotation.y = t * 0.05;
+        // Colonias: primero sobre la roca, después en el suelo.
+        this.rock.colonies.material.uniforms.uGrow.value = smooth(4.5, 10, t);
+        this.groundCol.material.uniforms.uGrow.value = smooth(7, 13, t);
+        // Esporas: flotan sobre el liquen; desde los 6 s "respiran" esperando el gatillo.
+        // "Sopla fuerte" suena al pulsar (o solo a los 9 s) y la dispersión nunca empieza antes de los 10 s.
+        const su = this.spores.material.uniforms;
+        if (this.spore.at < 0 && t >= 9) this.triggerSpores();           // automático si nadie pulsa
+        su.uBreath.value = t >= 6 && this.spore.at < 0 ? 1 : 0;
+        const sa = this.spore.at;
+        su.uDisp.value = sa > 0 ? smooth(sa, sa + 8, t) : 0;
+        su.uAlpha.value = smooth(5, 7, t) * (sa > 0 ? 1 - smooth(sa + 9, sa + 14, t) : 1);
+        // Tiempo geológico: la vegetación brota cuando las esporas se asientan.
+        const g0 = sa > 0 ? sa + 4 : 999;
+        const geo = clamp01((t - g0) / Math.max(1, 34 - g0));
+        for (const [k, [a, b]] of Object.entries(GEO_RANGE)) {
+          const v = clamp01((geo - a) / (b - a));
+          this.famU(k).uGrow.value = v;
+          this.fam[k].visible = v > 0 && !(k === 'ferns' && this.quality >= 2);
+        }
+        // Fauna (34–45 s), aparición gradual y discreta, con el bosque ya maduro.
+        if (t >= 34 && !this.flags4.d) { this.flags4.d = true; A.playNarr(N.a06); }
+        const order = [['chucao', 34], ['ciervo', 36], ['ranita', 38]];
+        for (const [k, t0] of order) { const m = this.fauna[k]; m.scale.setScalar(Math.max(0.0001, smooth(t0, t0 + 3, t) * m.userData.baseScale)); }
+        this.animateFauna(t);
+      },
+      exit: () => { this.tlAlpha.value = 0; this.applyTimelineAlpha(0); this.symRoot.visible = false; },
+      auto: true,
+    };
+
+    /* ESTADO 5 — RED INTERCONECTADA (+ lluvia y regreso al origen) */
+    const s5 = {
+      enter: (from) => {
+        this.hideAllLayers();
+        this.setForest(true); this.forestDim(1);
+        this.lichen.visible = true; this.lu.uReveal.value = 1; this.lu.uSelAmt.value = 0; this.lu.uSel.value = -1;
+        this.rock.group.visible = true; this.groundCol.visible = true; this.lichenBody.visible = true;
+        this.rock.colonies.material.uniforms.uGrow.value = 1; this.groundCol.material.uniforms.uGrow.value = 1;
+        this.lichenBody.position.copy(ROCK_TOP);
+        Object.values(this.fauna).forEach((m) => (m.visible = true));
+        this.net.lines.visible = this.net.flow.visible = true; this.net.u.uReveal.value = 0; this.net.u.uAlpha.value = 1;
+        this.rain.visible = true; this.rain.material.uniforms.uRain.value = 0; this.rain.material.uniforms.uAlpha.value = 0.55;
+        if (this.sky) { this.sky.visible = true; this.sky.material.uniforms.uAlpha.value = 0; }
+        this.flags5 = {}; this.from5 = from;
+        A.mix(0, 0.75); A.synth.setMode('network');
+        A.playNarr(N.a07);
+      },
+      update: (t, dt) => {
+        for (const k of FOREST_FAMS) approach(this.famU(k).uGrow, 1, 1.5, dt);
+        const back = smooth(25, 33.5, t);    // regreso al bosque presente
+        this.net.u.uReveal.value = smooth(1, 14, t);
+        this.net.u.uAlpha.value = 1 - back;
+        this.rain.material.uniforms.uRain.value = smooth(3, 20, t) * (1 - back);
+        if (this.sky) this.sky.material.uniforms.uAlpha.value = 0.38 * smooth(0, 8, t) * (1 - back);
+        fogTo(back > 0 ? STATE_FOG.forest : STATE_FOG.network, dt, 1);
+        if (t >= 12 && !this.flags5.x) { this.flags5.x = true; A.mix(0.9, 0, 5); }   // música → ambiente del bosque
+        const appear = this.from5 === 3 ? 1 : smooth(0, 3, t);
+        const keep = Math.min(appear, 1 - smooth(25, 33, t));
+        this.setRockAlpha(keep); this.setLichenBodyAlpha(keep); this.setFaunaScale(keep);
+        this.rock.group.visible = this.groundCol.visible = keep > 0.01;
+        this.animateFauna(t);
+        if (t >= CONFIG.durations[4]) this.goTo(0);
+      },
+      exit: () => { if (this.sky) this.sky.visible = false; },
+      auto: false,
+    };
+    return [s1, s2, s3, s4, s5];
+  }
+
+  frontLichen() {
+    let best = 0, bestDot = -2; const w = new V3();
+    this.lichenCenters.forEach((c, i) => {
+      w.copy(c).applyMatrix4(this.world.matrixWorld).sub(this.camPos).normalize();
+      const d = w.dot(this.fwd); if (d > bestDot) { bestDot = d; best = i; }
+    });
+    return best;
+  }
+  selectLichen(i) {
+    if (this.cur !== 0 || this.selectedLichen >= 0) return;   // evita repeticiones
+    this.selectedLichen = i; this.selectTime = this.t;
+    this.lu.uSel.value = i;
+    this.lichenProxies.visible = false;
+    this.audio.playNarr(N.a01);
+    this.audio.synth.oneShotOrigin();
+    this.audio.mix(0, 0.75, 5);   // crossfade ≤ 5 s bosque → sintetizador
+  }
+  // Gatillo de la escena 4: primero el audio "sopla fuerte", luego (≈1 s) la dispersión de esporas.
+  triggerSpores() {
+    if (this.cur !== 3 || this.spore.at > 0) return;
+    this.audio.playNarr(N.a05);
+    this.spore.at = Math.max(this.t + 1.0, 10);
+  }
+
+  animateFauna(t) {
+    const c = this.fauna.chucao, b = this.fauna.ciervo, r = this.fauna.ranita;
+    c.position.y = FAUNA_POS.chucao.y + Math.max(0, Math.sin(t * 2.2)) * 0.04 * (Math.sin(t * 0.7) > 0.6 ? 1 : 0);
+    b.rotation.y = Math.atan2(-FAUNA_POS.ciervo.x, -FAUNA_POS.ciervo.z) + Math.sin(t * 0.4) * 0.3;
+    r.scale.y = r.scale.x * (1 + 0.06 * Math.max(0, Math.sin(t * 5)));
+  }
+
+  updateTimeline(pos, t, dt) {
+    approach(this.tlAlpha, 1, 3, dt);
+    this.applyTimelineAlpha(this.tlAlpha.value);
+    const x = -0.3 + 0.6 * pos;
+    this.tlMarker.position.set(x, 0, 0.001);
+    this.tlFill.scale.x = Math.max(0.0001, pos); this.tlFill.position.x = -0.3 + 0.3 * pos;
+    this.tlNow.position.x = x;
+    this.tlLabelClock -= dt;
+    if (this.tlLabelClock <= 0) {   // máx. 10 redibujos/s
+      this.tlLabelClock = 0.1;
+      const ma = 400 * (1 - pos);
+      let txt;
+      if (pos >= 0.9995 || t >= 49.7) txt = 'HOY';
+      else if (ma >= 10) txt = `${Math.round(ma)} MA`;
+      else if (ma >= 0.1) txt = `${ma.toFixed(1).replace('.', ',')} MA`;
+      else txt = `${ma.toFixed(2).replace('.', ',')} MA`;
+      this.tlNow.setText(txt);
+    }
+  }
+  applyTimelineAlpha(a) { this.tlMats.forEach((m, i) => (m.opacity = a * (i === 0 ? 0.5 : i < 3 ? 0.8 : 1))); this.timeline.visible = a > 0.01; }
+
+  /* ---------- interacción ---------- */
+  actionOf(obj) { for (let o = obj; o; o = o.parent) if (o.userData?.action) return o; return null; }
+  // Las flechas tienen prioridad: si el rayo del mando las cruza, se navega aunque delante haya otro
+  // volumen interactivo (p. ej., la estructura celular, que es grande y quedaba entre el usuario y las flechas).
+  navUnderRay(source) {
+    const ci = xb.user.controllers?.indexOf(source?.controller) ?? -1;
+    if (ci < 0) return null;
+    const ray = xb.user.getRay(ci, this.tmpRay);
+    let best = null, bd = Infinity;
+    for (const [a, {g}] of Object.entries(this.navBtns)) {
+      g.getWorldPosition(this._navC ||= new V3());
+      (this._navS ||= new THREE.Sphere()).set(this._navC, 0.05);
+      const p = ray.intersectSphere(this._navS, this._navP ||= new V3());
+      if (p) { const d = p.distanceTo(ray.origin); if (d < bd) { bd = d; best = a; } }
+    }
+    return best;
+  }
+  // event.target es el Script que recibe el evento; la superficie golpeada es event.surface.
+  onObjectSelectStart(event) {
+    if (!this.running) return;
+    const navA = this.nav.visible ? this.navUnderRay(event.source) : null;
+    if (navA) { event.stopPropagation(); this.flashNav(navA); this.navigate(navA === 'next' ? 1 : -1); return; }
+    const o = this.actionOf(event.surface || event.intersection?.object);
+    if (!o) return;
+    event.stopPropagation();
+    const a = o.userData.action;
+    if (a === 'next') { this.flashNav(a); this.navigate(1); }
+    else if (a === 'prev') { this.flashNav(a); this.navigate(-1); }
+    else if (a === 'lichen' && this.cur === 0 && this.lichenProxies.visible) this.selectLichen(o.userData.index);
+    else if (a === 'cell' && this.cur === 2) { if (this.manip) this.endManip(); else this.startManip(event.source); }
+  }
+  // Gatillo "libre" (sin apuntar a un control): activa las esporas en la escena 4.
+  onSelectStart(event) {
+    if (!this.running || this.cur !== 3 || this.t < 6 || this.t >= 10) return;
+    const o = this.actionOf(event?.surface || event?.intersection?.object);
+    if (o && (o.userData.action === 'next' || o.userData.action === 'prev')) return;
+    if (event?.source && this.navUnderRay(event.source)) return;
+    this.triggerSpores();
+  }
+  // Destello breve de la flecha pulsada (confirma qué control se activó).
+  flashNav(a) { const b = this.navBtns[a]; if (b) b.flash = 1; }
+  updateNavFeedback(dt) {
+    // Resaltado por rayo propio (funciona aunque otro volumen intercepte el rayo antes que la flecha).
+    const hovered = new Set();
+    for (const c of xb.user.controllers || []) { const a = this.navUnderRay({controller: c}); if (a) hovered.add(a); }
+    for (const [a, b] of Object.entries(this.navBtns)) {
+      b.flash = Math.max(0, (b.flash || 0) - dt * 3);
+      const h = hovered.has(a) ? 1 : 0;
+      b.g.scale.setScalar(1 + 0.35 * h + 0.3 * b.flash);
+      b.icon.material.opacity = 0.45 + 0.45 * h + 0.5 * b.flash;
+    }
+  }
+  onHoverEnter(event) {
+    const o = this.actionOf(event.surface || event.intersection?.object); if (!o) return;
+    const a = o.userData.action;
+    if (a === 'lichen') this.lu.uHover.value = o.userData.index;
+
+  }
+  onHoverExit(event) {
+    const o = this.actionOf(event.surface || event.intersection?.object); if (!o) return;
+    const a = o.userData.action;
+    if (a === 'lichen') this.lu.uHover.value = -1;
+
+  }
+  onSqueezeStart() { if (this.manip) this.endManip(); }   // control de salida de la manipulación
+  onKeyDown(event) {
+    if (event.code === 'ArrowRight') this.navigate(1);
+    else if (event.code === 'ArrowLeft') this.navigate(-1);
+    else if (event.code === 'Escape' && this.manip) this.endManip();
+    else if (event.code === 'Space') this.onSelectStart({});
+    else if (event.code === 'Equal' || event.code === 'NumpadAdd') this.zoomT = Math.min(2.0, this.zoomT * 1.15);
+    else if (event.code === 'Minus' || event.code === 'NumpadSubtract') this.zoomT = Math.max(0.5, this.zoomT / 1.15);
+  }
+
+  rayAngles(ci) {
+    const ray = xb.user.getRay(ci, this.tmpRay); const d = ray.direction;
+    if (d.lengthSq() < 0.5) return null;
+    return [Math.atan2(d.x, -d.z), Math.asin(THREE.MathUtils.clamp(d.y, -1, 1))];
+  }
+  startManip(source) {
+    const ci = xb.user.controllers?.indexOf(source?.controller) ?? -1;
+    const ang = ci >= 0 ? this.rayAngles(ci) : null;
+    if (!ang) return;
+    this.manip = {ci, last: ang};
+    this.hintDone = true;
+  }
+  endManip() { this.manip = null; }
+  updateManip() {
+    if (!this.manip) return;
+    const ang = this.rayAngles(this.manip.ci);
+    if (!ang) return;
+    const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    const dy = THREE.MathUtils.clamp(wrap(ang[0] - this.manip.last[0]), -0.15, 0.15);
+    const dp = THREE.MathUtils.clamp(ang[1] - this.manip.last[1], -0.15, 0.15);
+    this.manip.last = ang;
+    this.symRot.tYaw += dy * 2.5;
+    this.symRot.tPitch = THREE.MathUtils.clamp(this.symRot.tPitch - dp * 2.5, -1.1, 1.1);   // límites estables
+  }
+
+  // Botones A/X = avanzar, B/Y = retroceder, joystick izq./der. (API WebXR estándar).
+  pollGamepads() {
+    const session = xb.core.renderer?.xr?.getSession?.();
+    let stickY = 0;
+    if (session) for (const src of session.inputSources) {
+      const gp = src.gamepad; if (!gp) continue;
+      const prev = this.padPrev.get(src) || {a: false, b: false, stick: 0};
+      const a = !!gp.buttons[4]?.pressed, b = !!gp.buttons[5]?.pressed;
+      const x = gp.axes.length > 2 ? gp.axes[2] : 0, y = gp.axes.length > 3 ? gp.axes[3] : 0;
+      if (Math.abs(y) > 0.2 && Math.abs(y) > Math.abs(x)) stickY = y;     // arriba/abajo: acercar/alejar
+      const stick = x > 0.75 ? 1 : x < -0.75 ? -1 : (Math.abs(x) < 0.3 ? 0 : prev.stick);
+      if (a && !prev.a) this.navigate(1);
+      if (b && !prev.b) this.navigate(-1);
+      if (stick !== 0 && stick !== prev.stick) this.navigate(stick);
+      this.padPrev.set(src, {a, b, stick});
+    }
+    this.stickY = stickY;
+  }
+
+  // Acercar/alejar las estructuras micro (escenas 2 y 3): joystick arriba = acercar; teclas + / − en escritorio.
+  updateZoom(dt) {
+    if (this.cur !== 1 && this.cur !== 2) return;
+    if (this.stickY) this.zoomT = THREE.MathUtils.clamp(this.zoomT * Math.exp(-this.stickY * dt * 1.4), 0.5, 2.0);
+    this.zoom = lerp(this.zoom, this.zoomT, 1 - Math.exp(-6 * dt));
+  }
+
+  followHud(dt) {
+    const yaw = this.camYaw();
+    const d = Math.atan2(Math.sin(yaw - this.hudYaw), Math.cos(yaw - this.hudYaw));
+    if (Math.abs(d) > 0.5 || this.hudCatch) { this.hudCatch = Math.abs(d) > 0.05; this.hudYaw += d * (1 - Math.exp(-4 * dt)); }
+    for (const g of [this.hud, this.nav]) { g.position.copy(this.camPos); g.rotation.set(0, this.hudYaw, 0); }
+  }
+
+  // Degradación visual si el rendimiento cae (se conserva lo narrativo esencial).
+  monitor(dt) {
+    this.dtAvg = lerp(this.dtAvg, dt, 0.05);
+    if (this.dtAvg > 1 / 55) this.slowTime += dt; else this.slowTime = Math.max(0, this.slowTime - dt * 0.5);
+    if (this.slowTime > 3 && this.quality < 2) {
+      this.quality++; this.slowTime = 0;
+      const f = this.quality === 1 ? 0.6 : 0.35;
+      for (const o of [this.spores, this.net.flow, this.fam.dust, this.fam.moss, this.rain]) {
+        const c = o.geometry.attributes.position.count; o.geometry.setDrawRange(0, Math.floor(c * f) & ~1);
+      }
+      if (this.quality === 2) this.fam.ferns.visible = false;
+      console.info('[LIQUEN] Calidad reducida a nivel', this.quality);
+    }
+  }
+
+  update() {
+    const now = performance.now() / 1000;
+    const dt = Math.min(0.25, Math.max(0, now - this.last)); this.last = now;
+    U.uTime.value += dt;
+    const r = xb.core.renderer;
+    if (r?.xr?.isPresenting) {
+      const l = r.xr.getBaseLayer?.();
+      U.uScale.value = (l?.framebufferHeight || l?.textureHeight || 1700) / 2;
+    } else if (r?.domElement) U.uScale.value = r.domElement.height / 2;
+    if (!this.running) return;
+    this.readCamera();
+    if (this.pendingRecenter > 0 && --this.pendingRecenter === 0) this.recenter();
+    this.followHud(dt);
+    this.backdrop.position.copy(this.camPos);
+    if (this.nav.visible) this.updateNavFeedback(dt);
+    this.pollGamepads();
+    this.updateZoom(dt);
+    this.updateManip();
+    this.t += dt;
+    const st = this.states[this.cur];
+    st.update(this.t, dt);
+    if (st.auto && this.t >= CONFIG.durations[this.cur]) this.goTo(this.cur + 1);
+    approach(U.uGlobal, 1, 2.2, dt);           // fundido desde negro
+    xb.core.scene.background = (this.bg ||= new THREE.Color(0x000000));
+    this.audio.synth.tick(this.t);
+    this.monitor(dt);
+  }
+}
+
+/* =====================================================================
+ * 7. ARRANQUE (robusto en Meta Quest Browser)
+ * ===================================================================== */
+const landing = document.getElementById('landing');
+const startBtn = document.getElementById('start');
+
+/* --- Diagnóstico opcional: solo con ?debug en la URL (no añade texto en el modo normal) --- */
+const DEBUG = new URLSearchParams(location.search).has('debug');
+let debugBox = null;
+if (DEBUG) {
+  debugBox = document.createElement('pre');
+  debugBox.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:50;max-width:min(560px,90vw);max-height:45vh;overflow:auto;margin:0;padding:10px;background:rgba(0,0,0,.85);color:#9fe8c0;font:12px/1.4 monospace;white-space:pre-wrap;border:1px solid #2de2d0;border-radius:6px';
+  document.body.appendChild(debugBox);
+  for (const level of ['log', 'info', 'warn', 'error']) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => { orig(...args); dlog(level.toUpperCase(), ...args); };
+  }
+  window.addEventListener('error', (e) => dlog('ERROR', e.message));
+  window.addEventListener('unhandledrejection', (e) => dlog('PROMISE', e.reason?.name, e.reason?.message || e.reason));
+}
+function dlog(...args) {
+  if (!debugBox) return;
+  const txt = args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : typeof a === 'object' ? (() => { try { return JSON.stringify(a); } catch { return String(a); } })() : String(a))).join(' ');
+  debugBox.textContent += `${(performance.now() / 1000).toFixed(1)}s ${txt}\n`;
+  debugBox.scrollTop = debugBox.scrollHeight;
+}
+dlog('secureContext', window.isSecureContext, '| iframe', window.self !== window.top, '| navigator.xr', !!navigator.xr,
+  '| offerSession', !!navigator.xr?.offerSession, '| UA', navigator.userAgent);
+
+/* --- Evita la "sesión ofrecida" automática ---
+ * XR Blocks llama a navigator.xr.offerSession() al iniciarse si el navegador lo admite.
+ * En Quest Browser eso deja una solicitud de sesión pendiente que puede hacer fallar la
+ * solicitud del botón "Comienza tu viaje". Se oculta solo para esta página. */
+if (navigator.xr && navigator.xr.offerSession) {
+  try { Object.defineProperty(navigator.xr, 'offerSession', {value: undefined, configurable: true, writable: true}); dlog('offerSession desactivado'); }
+  catch (e) { dlog('No se pudo desactivar offerSession', e); }
+}
+
+const options = new xb.Options();
+options.enableVR();                              // sesión immersive-vr (no passthrough)
+options.xrButton.enabled = false;                // botón propio: "Comienza tu viaje"
+options.controllers.visualizeRays = true;        // rayo visible desde los mandos
+options.simulator.instructions.enabled = false;
+options.referenceSpaceType = 'local-floor';
+// Meta Quest Browser rechaza la sesión ("NotSupportedError: The specified session configuration
+// is not supported") con la lista por defecto de XR Blocks (local-floor, bounded-floor, unbounded).
+// La experiencia solo usa 'local-floor', así que se pide únicamente ese espacio de referencia.
+options.webxrOptionalFeatures = ['local-floor'];
+options.permissions.microphone = false;          // nunca se usa el micrófono
+
+class SessionHooks extends xb.Script {
+  onXRSessionStarted() { dlog('Sesión XR iniciada'); starting = false; landing.classList.add('hidden'); app.begin(); }
+  onXRSessionEnded() { dlog('Sesión XR terminada'); starting = false; app.stop(); landing.classList.remove('hidden'); startBtn.disabled = false; }
+}
+const app = new Liquen();
+xb.add(app);
+xb.add(new SessionHooks());
+try { await xb.init(options); dlog('XR Blocks listo'); }
+catch (e) { console.warn('[LIQUEN] Inicialización parcial (p. ej., recurso del simulador de escritorio):', e); }
+try { xb.core.renderer.xr.setFoveation?.(1); } catch (e) { /* opcional */ }
+
+const mgr = xb.core.webXRSessionManager;
+const xrSupported = !!mgr?.isXRSupported?.();
+dlog('immersive-vr soportado', xrSupported);
+
+// Si la solicitud de sesión falla, se registra el motivo y el botón queda listo para reintentar.
+let starting = false;
+mgr?.addEventListener?.('sessionerror', (e) => {
+  starting = false; startBtn.disabled = false;
+  console.warn('[LIQUEN] Error al iniciar la sesión XR:', e.error?.name, e.error?.message || e.error);
+});
+
+// El botón se activa en cuanto XR Blocks está listo; los recursos siguen cargando en segundo plano
+// (una narración que aún no haya cargado simplemente no suena; el cielo aparece cuando llega).
+startBtn.disabled = false;
+app.preload().then(() => dlog('Recursos cargados')).catch((e) => console.warn('[LIQUEN] Precarga incompleta', e));
+
+startBtn.addEventListener('click', () => {
+  if (starting) return;
+  // 1) Primero la sesión XR: requestSession debe ocurrir dentro del gesto del usuario.
+  if (xrSupported && mgr && !mgr.currentSession) {
+    try { starting = true; startBtn.disabled = true; mgr.startSession(); dlog('Solicitando sesión XR…'); }
+    catch (e) { starting = false; startBtn.disabled = false; console.warn('[LIQUEN] No se pudo iniciar WebXR:', e?.message || e); }
+  }
+  // 2) Después el audio, protegido para que un error nunca bloquee la entrada.
+  try { app.audio.unlock(); } catch (e) { console.warn('[LIQUEN] Audio no disponible', e); }
+  // 3) Sin WebXR (escritorio): simulador de XR Blocks.
+  if (!xrSupported) { landing.classList.add('hidden'); app.begin(); }
+});
+</script>
+</body>
+</html>
